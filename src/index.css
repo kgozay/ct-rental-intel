@@ -1,0 +1,63 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  background-color: #FAF6E9;
+  background-image: radial-gradient(#111111 1px, transparent 1px);
+  background-size: 22px 22px;
+  background-position: -11px -11px;
+  font-family: 'Helvetica Neue', Arial, sans-serif;
+  margin: 0;
+  padding-bottom: 60px;
+}
+
+@keyframes rowin {
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.stagger-row {
+  opacity: 0;
+  transform: translateY(8px);
+  animation: rowin 0.4s forwards;
+}
+
+/* Mapbox Popup Overrides */
+.mapboxgl-popup-content {
+  border: 3px solid #111111 !important;
+  box-shadow: 4px 4px 0 #111111 !important;
+  background-color: #FAF6E9 !important; /* paper */
+  border-radius: 0px !important;
+  color: #111111 !important;
+  padding: 12px !important;
+}
+
+.mapboxgl-popup-tip {
+  border-top-color: #111111 !important;
+  border-bottom-color: #111111 !important;
+}
+
+.mapboxgl-popup-close-button {
+  color: #111111 !important;
+  font-weight: bold !important;
+  font-size: 14px !important;
+  padding: 4px 8px !important;
+}
+
+/* AI Terminal Blinking Cursor */
+@keyframes blink {
+  50% { opacity: 0; }
+}
+
+.blinking-cursor {
+  display: inline-block;
+  width: 9px;
+  height: 18px;
+  background-color: #111111;
+  animation: blink 0.8s steps(2) infinite;
+  vertical-align: -3px;
+  margin-left: 3px;
+}
