@@ -5,7 +5,7 @@
     }
   },
   "crons": [
-    { "path": "/api/scrape?force=true", "schedule": "0 5 */3 * *" }
+    { "path": "/api/scrape?force=true", "schedule": "0 5 * * *" }
   ],
   "rewrites": [
     { "source": "/((?!api/).*)", "destination": "/index.html" }
