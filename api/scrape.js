@@ -147,7 +147,14 @@ module.exports = async function handler(req, res) {
 
     // Compute value scores (relative to the suburb medians in this scrape)
     normalisedListings = computeValueScores(normalisedListings);
-    console.log(`Clean listings to process: ${normalisedListings.length} (dropped ${droppedCount})`);
+    
+    // Deduplicate listings by URL to prevent Postgres "ON CONFLICT DO UPDATE command cannot affect row a second time"
+    const uniqueListingsMap = new Map();
+    normalisedListings.forEach(item => {
+      uniqueListingsMap.set(item.url, item);
+    });
+    normalisedListings = Array.from(uniqueListingsMap.values());
+    console.log(`Clean deduplicated listings to process: ${normalisedListings.length} (dropped ${droppedCount})`);
 
     if (normalisedListings.length === 0) {
       return res.status(200).json({
