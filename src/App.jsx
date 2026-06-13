@@ -80,7 +80,7 @@ export default function App() {
       const histRes = await fetch('/api/history');
       if (histRes.ok) {
         const histData = await histRes.json();
-        setHistory(histData.history);
+        setHistory(Array.isArray(histData.history) ? histData.history : []);
       }
     } catch (err) {
       console.error("Failed to fetch dashboard data:", err);
@@ -103,7 +103,7 @@ export default function App() {
     const url = historyBeds ? `/api/history?beds=${historyBeds}` : '/api/history';
     fetch(url)
       .then(r => r.ok ? r.json() : null)
-      .then(data => { if (data) setHistory(data.history); })
+      .then(data => { if (data) setHistory(Array.isArray(data.history) ? data.history : []); })
       .catch(() => {});
   }, [historyBeds]);
 
@@ -151,7 +151,7 @@ export default function App() {
           }
         }, 20000);
       } else {
-        setNotice({ type: 'error', text: 'Scraping request failed. Check API logs.' });
+        setNotice({ type: 'error', text: 'Scrape failed to start — this is usually an Apify quota or API key issue. Try again in a few minutes.' });
         setScraping(false);
       }
     } catch (err) {
@@ -204,10 +204,9 @@ export default function App() {
           <button
             onClick={() => setTheme(prev => prev === 'dark' ? 'light' : 'dark')}
             className="border-2 border-ink bg-paper text-ink font-extrabold px-2 py-1.5 cursor-pointer hover:bg-neutral-100 transition-all select-none text-[0.8125rem] leading-none flex items-center justify-center rounded-none shadow-[2px_2px_0_#FAF6E9]"
-            aria-label="Toggle theme mode"
-            title={theme === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+            aria-label={theme === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
           >
-            {theme === 'dark' ? '☀️' : '🌙'}
+            {theme === 'dark' ? 'Light' : 'Dark'}
           </button>
           <button
             onClick={handleRefresh}

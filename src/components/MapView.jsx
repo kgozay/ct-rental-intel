@@ -117,7 +117,7 @@ export default function MapView({ listings }) {
             </div>
             ${valueBadgeHtml}
             <div style="margin-top: 10px;">
-              <a href="${esc(item.url)}" target="_blank" style="display: block; text-align: center; border: 2px solid #111; background: #FFD23F; padding: 4px; font-size: 11px; font-weight: 900; text-decoration: none; color: #111; box-shadow: 2px 2px 0 #111;">
+              <a href="${/^https?:\/\//i.test(item.url || '') ? esc(item.url) : '#'}" target="_blank" rel="noopener noreferrer" style="display: block; text-align: center; border: 2px solid #111; background: #FFD23F; padding: 4px; font-size: 11px; font-weight: 900; text-decoration: none; color: #111; box-shadow: 2px 2px 0 #111;">
                 VIEW LISTING ↗
               </a>
             </div>

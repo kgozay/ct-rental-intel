@@ -1,4 +1,6 @@
 const { sql } = require('./db');
+const { SUBURBS } = require('./suburbs');
+const VALID_SUBURB_NAMES = new Set(SUBURBS.map(s => s.name));
 
 module.exports = async function handler(req, res) {
   // Enforce GET
@@ -31,11 +33,13 @@ module.exports = async function handler(req, res) {
       });
     }
 
-    // 2. Filter by suburbs (CSV)
+    // 2. Filter by suburbs (CSV) — only accept known suburb names to prevent schema probing
     if (suburb) {
-      const suburbsList = suburb.split(',').map(s => s.trim());
-      queryConditions.push(`suburb = ANY($${paramIdx++})`);
-      queryParams.push(suburbsList);
+      const suburbsList = suburb.split(',').map(s => s.trim()).filter(s => VALID_SUBURB_NAMES.has(s));
+      if (suburbsList.length > 0) {
+        queryConditions.push(`suburb = ANY($${paramIdx++})`);
+        queryParams.push(suburbsList);
+      }
     }
 
     // 3. Filter by max price

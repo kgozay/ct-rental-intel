@@ -2,6 +2,17 @@ import { useState, useMemo } from 'react';
 import ValueBadge from './ValueBadge';
 import { SUBURBS_LIST } from '../utils/suburbs';
 
+const DEFAULT_FILTERS = {
+  suburbs: [...SUBURBS_LIST],
+  maxPrice: 80000,
+  minBeds: null,
+  furnished: null,
+  goodValueOnly: false,
+  priceDropOnly: false,
+  availableBefore: '',
+  shortlistOnly: false,
+};
+
 function daysAgo(isoString) {
   if (!isoString) return null;
   return Math.floor((Date.now() - new Date(isoString).getTime()) / 86400000);
@@ -78,6 +89,18 @@ export default function ListingsTable({ listings, filteredListings, filters, set
     [listings]
   );
 
+  const isFiltered = useMemo(() =>
+    filters.suburbs.length < SUBURBS_LIST.length ||
+    filters.maxPrice < 80000 ||
+    filters.minBeds !== null ||
+    filters.furnished !== null ||
+    filters.goodValueOnly ||
+    filters.priceDropOnly ||
+    filters.availableBefore !== '' ||
+    filters.shortlistOnly,
+    [filters]
+  );
+
   const availableBeforeCount = useMemo(() => {
     if (!filters.availableBefore) return 0;
     return listings.filter(l => l.available_date && l.available_date <= filters.availableBefore).length;
@@ -108,9 +131,19 @@ export default function ListingsTable({ listings, filteredListings, filters, set
       {/* FILTER PANEL */}
       <details open className="border-[3px] border-ink bg-paper shadow-[6px_6px_0_#111111] p-5 mb-7 rounded-none group">
         <summary className="list-none flex items-center justify-between cursor-pointer select-none focus:outline-none">
-          <h2 className="inline-block bg-ink text-paper text-xs font-black uppercase tracking-wider px-2.5 py-1 m-0">
-            Filters
-          </h2>
+          <div className="flex items-center gap-3">
+            <h2 className="inline-block bg-ink text-paper text-xs font-black uppercase tracking-wider px-2.5 py-1 m-0">
+              Filters
+            </h2>
+            {isFiltered && (
+              <button
+                onClick={(e) => { e.preventDefault(); setFilters(DEFAULT_FILTERS); }}
+                className="border-2 border-ink bg-white text-ink text-[0.6875rem] font-black uppercase px-2 py-0.5 hover:bg-yellow transition-colors focus:outline-none shadow-[1px_1px_0_#111111]"
+              >
+                Reset all
+              </button>
+            )}
+          </div>
           <span className="font-extrabold text-xs text-ink group-open:before:content-['▲_'] before:content-['▼_'] select-none">
             Toggle
           </span>
@@ -255,6 +288,11 @@ export default function ListingsTable({ listings, filteredListings, filters, set
                 ♥ Shortlist only
               </button>
             </div>
+            {shortlisted.size === 0 && (
+              <div className="text-[0.625rem] text-neutral-400 font-medium mt-1">
+                Click ♡ on any row to save a listing to your shortlist.
+              </div>
+            )}
           </div>
         </div>
       </details>
@@ -270,7 +308,14 @@ export default function ListingsTable({ listings, filteredListings, filters, set
               <SortHdr field="price" title="Sort by monthly rental price" sortField={sortField} sortAsc={sortAsc} handleSort={handleSort}>Price</SortHdr>
               <SortHdr field="size_m2" title="Sort by unit size in square meters" sortField={sortField} sortAsc={sortAsc} handleSort={handleSort}>Size</SortHdr>
               <SortHdr field="price_per_m2" title="Sort by rental price per square meter" sortField={sortField} sortAsc={sortAsc} handleSort={handleSort}>R/m²</SortHdr>
-              <SortHdr field="value_score" title="Sort by value score (relative to suburb median)" sortField={sortField} sortAsc={sortAsc} handleSort={handleSort}>Value</SortHdr>
+              <SortHdr field="value_score" title="Sort by value score (relative to suburb median R/m²)" sortField={sortField} sortAsc={sortAsc} handleSort={handleSort}>
+                Value{' '}
+                <span
+                  className="font-normal opacity-50 cursor-help text-[0.625rem] ml-0.5"
+                  title="Compares this listing's R/m² to the suburb median. Good value (lime) = 15%+ below median. Expensive (red) = 15%+ above."
+                  onClick={e => e.stopPropagation()}
+                >?</span>
+              </SortHdr>
               <SortHdr field="available" title="Sort by occupation date" sortField={sortField} sortAsc={sortAsc} handleSort={handleSort}>Available</SortHdr>
               <SortHdr field="days" title="Sort by days since listing was first seen" sortField={sortField} sortAsc={sortAsc} handleSort={handleSort}>Days</SortHdr>
               <SortHdr field="agency_name" title="Sort by real estate agency name" sortField={sortField} sortAsc={sortAsc} handleSort={handleSort}>Agency</SortHdr>
@@ -280,8 +325,36 @@ export default function ListingsTable({ listings, filteredListings, filters, set
           <tbody>
             {sortedListings.length === 0 ? (
               <tr>
-                <td colSpan="11" className="px-4 py-8 text-center text-neutral-400 font-bold">
-                  No listings match the current filters.
+                <td colSpan="11" className="px-6 py-10 text-center">
+                  {listings.length === 0 ? (
+                    <span className="font-bold text-neutral-400">
+                      No data yet — click ↻ Refresh Listings to run the first scrape.
+                    </span>
+                  ) : (
+                    <div className="flex flex-col items-center gap-3">
+                      <div className="font-black text-sm text-ink">No listings match the active filters.</div>
+                      <div className="text-xs text-neutral-500 font-medium max-w-sm text-left space-y-0.5">
+                        {filters.suburbs.length < SUBURBS_LIST.length && (
+                          <div>· Suburbs limited to {filters.suburbs.length} of {SUBURBS_LIST.length}</div>
+                        )}
+                        {filters.maxPrice < 80000 && (
+                          <div>· Max price set to R{filters.maxPrice.toLocaleString('en-ZA')}</div>
+                        )}
+                        {filters.minBeds !== null && <div>· Minimum {filters.minBeds}+ bedrooms</div>}
+                        {filters.furnished === true && <div>· Furnished only</div>}
+                        {filters.goodValueOnly && <div>· Good value only is on</div>}
+                        {filters.priceDropOnly && <div>· Price drops only is on</div>}
+                        {filters.shortlistOnly && shortlisted.size === 0 && <div>· Shortlist is empty — add listings with ♡</div>}
+                        {filters.availableBefore && <div>· Available before {filters.availableBefore}</div>}
+                      </div>
+                      <button
+                        onClick={() => setFilters(DEFAULT_FILTERS)}
+                        className="border-[3px] border-ink bg-yellow text-ink text-xs font-black uppercase px-5 py-2 cursor-pointer shadow-[3px_3px_0_#111111] hover:translate-x-[-1px] hover:translate-y-[-1px] hover:shadow-[4px_4px_0_#111111] active:translate-x-[2px] active:translate-y-[2px] active:shadow-none transition-all"
+                      >
+                        Reset all filters
+                      </button>
+                    </div>
+                  )}
                 </td>
               </tr>
             ) : (
@@ -378,8 +451,10 @@ export default function ListingsTable({ listings, filteredListings, filters, set
           ↓ Export CSV
         </button>
       </div>
-      <div className="mt-2 text-[0.625rem] text-neutral-400 font-bold select-none">
-        * "Days" indicates how many days since the listing was first detected by the scraper.
+      <div className="mt-2 text-[0.625rem] text-neutral-400 font-bold select-none space-y-0.5">
+        <div>* "Days" = how many days since the listing was first detected by the scraper.</div>
+        <div>* <span className="inline-block bg-yellow border border-ink text-ink text-[0.5625rem] font-black uppercase px-1 py-0 leading-none mr-0.5">NEW</span> = listing appeared since your last visit.</div>
+        <div>* Value score compares this listing's R/m² to the suburb median. Hover the <span className="font-black text-ink">?</span> in the Value column for details.</div>
       </div>
     </div>
   );

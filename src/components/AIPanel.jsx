@@ -78,11 +78,11 @@ export default function AIPanel({ filteredListings, filters }) {
         setGeneratedAt(data.generatedAt);
         cacheRef.current[signature] = { analysis: data.analysis, generatedAt: data.generatedAt };
       } else {
-        setAnalysis("Failed to generate analysis. Please check that your Gemini API key is configured.");
+        setAnalysis("Analysis failed — your Gemini API key may have reached its quota. Try again in a few minutes.");
       }
     } catch (err) {
       console.error(err);
-      setAnalysis("An error occurred while communicating with the AI service.");
+      setAnalysis("Couldn't reach the AI service. Check your internet connection and try again.");
     } finally {
       setLoading(false);
     }
@@ -106,16 +106,24 @@ export default function AIPanel({ filteredListings, filters }) {
         </button>
       </div>
 
-      <div className="border-[3px] border-ink bg-white p-5 min-h-[140px] text-sm md:text-base leading-relaxed text-ink font-medium rounded-none relative">
+      <div
+        className="border-[3px] border-ink bg-white p-5 min-h-[140px] text-sm md:text-base leading-relaxed text-ink font-medium rounded-none relative"
+        role="region"
+        aria-label="AI market analysis"
+        aria-live="polite"
+      >
         {loading && (
           <div className="flex items-center justify-center py-6 text-neutral-400 font-extrabold">
-            ⏳ Analysing {filteredListings.length} listings with Gemini...
+            Analysing {filteredListings.length} listings — this takes 10–20 seconds...
           </div>
         )}
-        
+
         {!loading && !analysis && (
-          <div className="text-neutral-400 font-bold">
-            Click generate to analyse the {filteredListings.length} active listings...
+          <div className="text-neutral-500 font-medium">
+            <div className="font-black text-ink text-sm mb-1.5">AI market report</div>
+            <p className="text-sm leading-relaxed max-w-lg">
+              Gemini 2.5 Flash reads the {filteredListings.length} active listings and writes a 3-paragraph analyst report — value picks by suburb and bedroom count, supply and furnishing patterns, and concrete tactics for where to search. Takes 10–20 seconds.
+            </p>
           </div>
         )}
 

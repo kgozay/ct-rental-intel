@@ -1,3 +1,6 @@
+const { SUBURBS } = require('./suburbs');
+const VALID_SUBURBS = new Set(SUBURBS.map(s => s.name));
+
 module.exports = async function handler(req, res) {
   // Enforce POST
   if (req.method !== 'POST') {
@@ -69,7 +72,18 @@ module.exports = async function handler(req, res) {
       };
     }
 
-    const maxPriceText = context.maxPrice ? `R${parseInt(context.maxPrice, 10).toLocaleString('en-ZA')}` : 'Any';
+    // Sanitize context fields — validate suburbs against whitelist, coerce numerics.
+    // This prevents prompt injection via crafted context values.
+    const rawMaxPrice = parseInt(context.maxPrice, 10);
+    const maxPriceText = (!isNaN(rawMaxPrice) && rawMaxPrice > 0) ? `R${rawMaxPrice.toLocaleString('en-ZA')}` : 'Any';
+
+    let safeSuburb = 'All';
+    if (context.suburb) {
+      const allowed = String(context.suburb).split(',').map(s => s.trim()).filter(s => VALID_SUBURBS.has(s));
+      safeSuburb = allowed.length > 0 ? allowed.join(', ') : 'All';
+    }
+    const rawMinBeds = parseInt(context.minBeds, 10);
+    const safeMinBeds = (!isNaN(rawMinBeds) && rawMinBeds >= 0) ? rawMinBeds : null;
 
     const systemPrompt = `You are a senior residential property analyst specializing in Cape Town's Atlantic Seaboard, City Bowl, and Southern Suburbs. 
 Write a highly insightful, professional, and data-driven market report based on the provided listing stats. 
@@ -87,8 +101,8 @@ Use bold text for suburb names, prices, and statistics to make the analysis imme
 - Good value listings (score > 1.15): ${goodValueCount}
 - User Search Context:
   - Max Price: ${maxPriceText}
-  - Suburbs active: ${context.suburb || 'All'}
-  - Min Bedrooms: ${context.minBeds || 'Any'}
+  - Suburbs active: ${safeSuburb}
+  - Min Bedrooms: ${safeMinBeds !== null ? safeMinBeds : 'Any'}
 
 Detailed Suburb Aggregates:
 ${JSON.stringify(parsedStats, null, 2)}
