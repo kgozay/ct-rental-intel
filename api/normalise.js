@@ -183,38 +183,44 @@ function normaliseListing(raw) {
 }
 
 function computeValueScores(normalisedListings) {
-  // 1. Group listings by suburb and extract non-null price_per_m2
-  const suburbPrices = {};
+  // 1. Group listings by [suburb][bedrooms] and extract prices
+  const suburbBedPrices = {};
   
   normalisedListings.forEach(item => {
-    if (item.price_per_m2 !== null && item.price_per_m2 !== undefined) {
-      if (!suburbPrices[item.suburb]) {
-        suburbPrices[item.suburb] = [];
+    if (item.price !== null && item.price !== undefined && item.bedrooms !== null && item.bedrooms !== undefined) {
+      const key = `${item.suburb}_beds_${item.bedrooms}`;
+      if (!suburbBedPrices[key]) {
+        suburbBedPrices[key] = [];
       }
-      suburbPrices[item.suburb].push(item.price_per_m2);
+      suburbBedPrices[key].push(item.price);
     }
   });
   
-  // 2. Compute median price_per_m2 for each suburb
-  const suburbMedians = {};
-  for (const suburb in suburbPrices) {
-    const prices = suburbPrices[suburb].sort((a, b) => a - b);
+  // 2. Compute median price for each [suburb][bedrooms] group
+  const suburbBedMedians = {};
+  for (const key in suburbBedPrices) {
+    const prices = suburbBedPrices[key].sort((a, b) => a - b);
     const mid = Math.floor(prices.length / 2);
     const median = prices.length % 2 !== 0 
       ? prices[mid] 
       : Math.round((prices[mid - 1] + prices[mid]) / 2);
-    suburbMedians[suburb] = median;
+    suburbBedMedians[key] = median;
   }
   
-  // 3. Compute value score for each listing based on its suburb median
+  // 3. Compute value score for each listing based on its suburb-bed median price
   return normalisedListings.map(item => {
-    const median = suburbMedians[item.suburb];
-    if (item.price_per_m2 === null || item.price_per_m2 === undefined || !median) {
+    if (item.price === null || item.price === undefined || item.bedrooms === null || item.bedrooms === undefined) {
       return { ...item, value_score: null };
     }
     
-    // value_score = suburbMedian / listing.price_per_m2
-    const score = parseFloat((median / item.price_per_m2).toFixed(2));
+    const key = `${item.suburb}_beds_${item.bedrooms}`;
+    const median = suburbBedMedians[key];
+    if (!median) {
+      return { ...item, value_score: null };
+    }
+    
+    // value_score = medianPriceForBedsInSuburb / listing.price
+    const score = parseFloat((median / item.price).toFixed(2));
     return { ...item, value_score: score };
   });
 }
