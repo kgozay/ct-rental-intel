@@ -10,6 +10,7 @@ body {
   font-family: 'Helvetica Neue', Arial, sans-serif;
   margin: 0;
   padding-bottom: 60px;
+  color: #111111;
 }
 
 @keyframes rowin {
@@ -125,117 +126,116 @@ tbody tr {
   }
 }
 
-/* Native Dark Mode support */
-@media (prefers-color-scheme: dark) {
-  body {
-    background-color: #121212;
-    background-image: radial-gradient(#2d2d2d 1px, transparent 1px);
-  }
-  
-  .bg-paper {
-    background-color: #1a1a1a !important;
-  }
-  
-  .bg-white {
-    background-color: #1e1e1e !important;
-    color: #FAF6E9 !important;
-  }
-  
-  .text-ink {
-    color: #FAF6E9 !important;
-  }
-  
-  .text-ink\/70 {
-    color: rgba(250, 246, 233, 0.7) !important;
-  }
-  
-  .text-ink\/80 {
-    color: rgba(250, 246, 233, 0.8) !important;
-  }
-  
-  .border-ink,
-  .border-2,
-  .border-\[3px\],
-  .border-t-2 {
-    border-color: #FAF6E9 !important;
-  }
-  
-  .shadow-\[6px_6px_0_\#111111\] {
-    box-shadow: 6px 6px 0 #FAF6E9 !important;
-  }
-  
-  .shadow-\[4px_4px_0_\#111111\] {
-    box-shadow: 4px 4px 0 #FAF6E9 !important;
-  }
-  
-  .shadow-\[3px_3px_0_\#111111\] {
-    box-shadow: 3px 3px 0 #FAF6E9 !important;
-  }
-  
-  .shadow-\[2px_2px_0_\#111111\] {
-    box-shadow: 2px 2px 0 #FAF6E9 !important;
-  }
-  
-  /* Tables */
-  thead tr {
-    background-color: #FAF6E9 !important;
-    color: #111111 !important;
-  }
-  
-  tbody tr {
-    background-color: #1e1e1e !important;
-    color: #FAF6E9 !important;
-  }
-  
-  tbody tr:hover {
-    background-color: #2a2a2a !important;
-  }
-  
-  .overflow-x-auto {
-    background:
-      linear-gradient(to right, #1e1e1e 30%, rgba(30, 30, 30, 0)),
-      linear-gradient(to right, rgba(30, 30, 30, 0), #1e1e1e 70%) 100% 0,
-      radial-gradient(farthest-side at 0% 50%, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0)),
-      radial-gradient(farthest-side at 100% 50%, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0)) 100% 0;
-    background-repeat: no-repeat;
-    background-size: 40px 100%, 40px 100%, 14px 100%, 14px 100%;
-    background-attachment: local, local, scroll, scroll;
-  }
-  
-  /* Buttons */
-  button.bg-paper {
-    background-color: #1e1e1e !important;
-    color: #FAF6E9 !important;
-  }
-  button.bg-paper:hover {
-    background-color: #2d2d2d !important;
-  }
-  
-  /* Recharts custom tooltip */
-  .bg-paper.border-2.border-ink {
-    background-color: #1e1e1e !important;
-    border-color: #FAF6E9 !important;
-    box-shadow: 3px 3px 0 #FAF6E9 !important;
-    color: #FAF6E9 !important;
-  }
-  
-  /* Blinking cursor in dark mode */
-  .blinking-cursor {
-    background-color: #FAF6E9 !important;
-  }
-  
-  /* Leaflet popup overrides for dark mode */
-  .leaflet-popup-content-wrapper {
-    background-color: #1e1e1e !important;
-    border-color: #FAF6E9 !important;
-    box-shadow: 4px 4px 0 #FAF6E9 !important;
-  }
-  
-  .leaflet-popup-tip {
-    background: #FAF6E9 !important;
-  }
-  
-  .leaflet-popup-close-button {
-    color: #FAF6E9 !important;
-  }
+/* Class-based Dark Mode support */
+html.dark body {
+  background-color: #121212;
+  background-image: radial-gradient(#2d2d2d 1px, transparent 1px);
+  color: #FAF6E9;
+}
+
+html.dark .bg-paper {
+  background-color: #1a1a1a !important;
+}
+
+html.dark .bg-white {
+  background-color: #1e1e1e !important;
+  color: #FAF6E9 !important;
+}
+
+html.dark .text-ink {
+  color: #FAF6E9 !important;
+}
+
+html.dark .text-ink\/70 {
+  color: rgba(250, 246, 233, 0.7) !important;
+}
+
+html.dark .text-ink\/80 {
+  color: rgba(250, 246, 233, 0.8) !important;
+}
+
+html.dark .border-ink,
+html.dark .border-2,
+html.dark .border-\[3px\],
+html.dark .border-t-2 {
+  border-color: #FAF6E9 !important;
+}
+
+html.dark .shadow-\[6px_6px_0_\#111111\] {
+  box-shadow: 6px 6px 0 #FAF6E9 !important;
+}
+
+html.dark .shadow-\[4px_4px_0_\#111111\] {
+  box-shadow: 4px 4px 0 #FAF6E9 !important;
+}
+
+html.dark .shadow-\[3px_3px_0_\#111111\] {
+  box-shadow: 3px 3px 0 #FAF6E9 !important;
+}
+
+html.dark .shadow-\[2px_2px_0_\#111111\] {
+  box-shadow: 2px 2px 0 #FAF6E9 !important;
+}
+
+/* Tables */
+html.dark thead tr {
+  background-color: #FAF6E9 !important;
+  color: #111111 !important;
+}
+
+html.dark tbody tr {
+  background-color: #1e1e1e !important;
+  color: #FAF6E9 !important;
+}
+
+html.dark tbody tr:hover {
+  background-color: #2a2a2a !important;
+}
+
+html.dark .overflow-x-auto {
+  background:
+    linear-gradient(to right, #1e1e1e 30%, rgba(30, 30, 30, 0)),
+    linear-gradient(to right, rgba(30, 30, 30, 0), #1e1e1e 70%) 100% 0,
+    radial-gradient(farthest-side at 0% 50%, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0)),
+    radial-gradient(farthest-side at 100% 50%, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0)) 100% 0;
+  background-repeat: no-repeat;
+  background-size: 40px 100%, 40px 100%, 14px 100%, 14px 100%;
+  background-attachment: local, local, scroll, scroll;
+}
+
+/* Buttons */
+html.dark button.bg-paper {
+  background-color: #1e1e1e !important;
+  color: #FAF6E9 !important;
+}
+html.dark button.bg-paper:hover {
+  background-color: #2d2d2d !important;
+}
+
+/* Recharts custom tooltip */
+html.dark .bg-paper.border-2.border-ink {
+  background-color: #1e1e1e !important;
+  border-color: #FAF6E9 !important;
+  box-shadow: 3px 3px 0 #FAF6E9 !important;
+  color: #FAF6E9 !important;
+}
+
+/* Blinking cursor in dark mode */
+html.dark .blinking-cursor {
+  background-color: #FAF6E9 !important;
+}
+
+/* Leaflet popup overrides for dark mode */
+html.dark .leaflet-popup-content-wrapper {
+  background-color: #1e1e1e !important;
+  border-color: #FAF6E9 !important;
+  box-shadow: 4px 4px 0 #FAF6E9 !important;
+}
+
+html.dark .leaflet-popup-tip {
+  background: #FAF6E9 !important;
+}
+
+html.dark .leaflet-popup-close-button {
+  color: #FAF6E9 !important;
 }

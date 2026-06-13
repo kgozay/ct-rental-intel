@@ -37,6 +37,14 @@ const STEPS = [
 
 export default function Landing() {
   const [stats, setStats] = useState(null);
+  const [theme, setTheme] = useState(() => {
+    return localStorage.getItem('theme') || 'light';
+  });
+
+  useEffect(() => {
+    document.documentElement.classList.toggle('dark', theme === 'dark');
+    localStorage.setItem('theme', theme);
+  }, [theme]);
 
   useEffect(() => {
     document.title = "Cape Town Rental Intelligence — Neo-Brutalist Property Dashboard";
@@ -74,12 +82,22 @@ export default function Landing() {
         <div className="text-xl md:text-2xl font-black tracking-tight uppercase">
           Cape Town Rental<span className="text-blue">.</span>Intel
         </div>
-        <Link
-          to="/dashboard"
-          className="border-[3px] border-ink bg-ink text-paper font-extrabold uppercase px-4 py-2 text-xs tracking-wider no-underline shadow-[4px_4px_0_#111111] transition-all duration-75 hover:translate-x-[-1px] hover:translate-y-[-1px] hover:shadow-[5px_5px_0_#111111] active:translate-x-[2px] active:translate-y-[2px] active:shadow-[2px_2px_0_#111111]"
-        >
-          Open dashboard →
-        </Link>
+        <div className="flex items-center gap-4">
+          <button
+            onClick={() => setTheme(prev => prev === 'dark' ? 'light' : 'dark')}
+            className="border-[3px] border-ink bg-paper text-ink font-extrabold px-3 py-2 cursor-pointer hover:bg-neutral-100 transition-all select-none text-sm leading-none flex items-center justify-center rounded-none shadow-[3px_3px_0_#111111] hover:translate-x-[-1px] hover:translate-y-[-1px] hover:shadow-[4px_4px_0_#111111] active:translate-x-[1px] active:translate-y-[1px] active:shadow-none"
+            aria-label="Toggle theme mode"
+            title={theme === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+          >
+            {theme === 'dark' ? '☀️' : '🌙'}
+          </button>
+          <Link
+            to="/dashboard"
+            className="border-[3px] border-ink bg-ink text-paper font-extrabold uppercase px-4 py-2 text-xs tracking-wider no-underline shadow-[4px_4px_0_#111111] transition-all duration-75 hover:translate-x-[-1px] hover:translate-y-[-1px] hover:shadow-[5px_5px_0_#111111] active:translate-x-[2px] active:translate-y-[2px] active:shadow-[2px_2px_0_#111111]"
+          >
+            Open dashboard →
+          </Link>
+        </div>
       </nav>
 
       {/* HERO */}

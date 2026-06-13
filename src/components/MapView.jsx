@@ -1,6 +1,5 @@
 import { useEffect, useRef } from 'react';
 import L from 'leaflet';
-import 'leaflet/dist/leaflet.css';
 
 const esc = (s) => String(s ?? '')
   .replace(/&/g, '&amp;')
@@ -26,6 +25,11 @@ export default function MapView({ listings }) {
     });
 
     mapRef.current = map;
+
+    // Force size recalculation to prevent misaligned tiles or broken layouts when rendered inside dynamic tabs
+    setTimeout(() => {
+      map.invalidateSize();
+    }, 150);
 
     // Add standard Zoom control in top-right
     L.control.zoom({ position: 'topright' }).addTo(map);
@@ -126,8 +130,8 @@ export default function MapView({ listings }) {
         // If the geocode is not precise, add a deterministic jitter to spread approximate listings around the suburb centroid
         if (!item.geocode_precise) {
           const idNum = parseInt(item.listing_id, 10) || 0;
-          const latJitter = ((idNum % 100) / 100 - 0.5) * 0.006; // -0.003 to 0.003 degrees offset
-          const lngJitter = (((idNum / 100) % 100) / 100 - 0.5) * 0.006;
+          const latJitter = ((idNum % 100) / 100 - 0.5) * 0.0015; // -0.00075 to 0.00075 degrees offset (~75m)
+          const lngJitter = (((idNum / 100) % 100) / 100 - 0.5) * 0.0015;
           lat += latJitter;
           lng += lngJitter;
         }

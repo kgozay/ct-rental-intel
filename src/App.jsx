@@ -9,6 +9,15 @@ const AIPanel = lazy(() => import('./components/AIPanel'));
 const SuburbComparison = lazy(() => import('./components/SuburbComparison'));
 
 export default function App() {
+  const [theme, setTheme] = useState(() => {
+    return localStorage.getItem('theme') || 'light';
+  });
+
+  useEffect(() => {
+    document.documentElement.classList.toggle('dark', theme === 'dark');
+    localStorage.setItem('theme', theme);
+  }, [theme]);
+
   const [listings, setListings] = useState([]);
   const [medians, setMedians] = useState({});
   const [history, setHistory] = useState([]);
@@ -192,6 +201,14 @@ export default function App() {
         <div className="flex items-center gap-5 text-[0.8125rem] font-bold">
           <Link to="/" className="opacity-70 hover:opacity-100 no-underline text-paper uppercase tracking-wider">← Home</Link>
           <span className="opacity-80">Last scrape: {formatScrapeDate(lastScraped)}</span>
+          <button
+            onClick={() => setTheme(prev => prev === 'dark' ? 'light' : 'dark')}
+            className="border-2 border-ink bg-paper text-ink font-extrabold px-2 py-1.5 cursor-pointer hover:bg-neutral-100 transition-all select-none text-[0.8125rem] leading-none flex items-center justify-center rounded-none shadow-[2px_2px_0_#FAF6E9]"
+            aria-label="Toggle theme mode"
+            title={theme === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+          >
+            {theme === 'dark' ? '☀️' : '🌙'}
+          </button>
           <button
             onClick={handleRefresh}
             disabled={scraping}
