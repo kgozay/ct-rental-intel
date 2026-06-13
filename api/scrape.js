@@ -2,9 +2,9 @@ const { sql } = require('./db');
 const { SUBURBS } = require('./suburbs');
 
 // Cooldown between billable scrapes. Manual refreshes inside this window return
-// cached data instead of spending Apify credits. The Vercel cron (every 3 days)
-// bypasses it with ?force=true. See CLAUDE.md "Apify cost controls".
-const COOLDOWN_HOURS = 72;
+// cached data instead of spending Apify credits. The Vercel cron (daily at 5am)
+// bypasses it with ?force=true. Set to 20h so daily cron always runs with headroom.
+const COOLDOWN_HOURS = 20;
 
 // Enrichment roughly doubles the per-listing Apify cost (listing + enrichment events).
 // Toggle off via APIFY_ENRICH=false once we confirm floor_area survives without it.
@@ -93,9 +93,10 @@ module.exports = async function handler(req, res) {
         eventTypes: ['ACTOR.RUN.SUCCEEDED'],
         requestUrl: `${baseUrl}/api/ingest?suburb=${encodeURIComponent(suburb.name)}&scrapeId=${scrapeId}&secret=${encodeURIComponent(INGEST_SECRET)}`
       }];
-      const webhooks = Buffer.from(JSON.stringify(hook)).toString('base64');
-
-      const url = `https://api.apify.com/v2/acts/fatihtahta~property24-scraper-za/runs?token=${APIFY_TOKEN}&webhooks=${webhooks}`;
+      // Encode webhooks as base64 then URL-encode so that base64 chars (+, /, =)
+      // don't get corrupted when transmitted in a query parameter.
+      const webhooksEncoded = encodeURIComponent(Buffer.from(JSON.stringify(hook)).toString('base64'));
+      const url = `https://api.apify.com/v2/acts/fatihtahta~property24-scraper-za/runs?token=${APIFY_TOKEN}&webhooks=${webhooksEncoded}`;
       const body = {
         deal_type: "Properties For Rent",
         location: suburb.location,
