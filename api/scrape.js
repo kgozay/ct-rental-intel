@@ -1,6 +1,6 @@
 const { sql } = require('./db');
 const { SUBURBS } = require('./suburbs');
-const { isValid, normaliseListing, computeValueScores } = require('../src/utils/normalise');
+const { isValid, normaliseListing, computeValueScores } = require('./normalise');
 
 const sleep = ms => new Promise(res => setTimeout(res, ms));
 
