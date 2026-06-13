@@ -165,7 +165,7 @@ module.exports = async function handler(req, res) {
     let cachedCoordsMap = {};
     
     try {
-      const cacheRows = await sql(
+      const cacheRows = await sql.query(
         `SELECT url, lat, lng, geocode_precise FROM listings WHERE url = ANY($1)`,
         [urls]
       );
@@ -248,7 +248,7 @@ module.exports = async function handler(req, res) {
     console.log("Writing scrape results to database...");
     
     // Create a scrape session
-    const scrapeResult = await sql(
+    const scrapeResult = await sql.query(
       `INSERT INTO scrapes (suburbs, listing_count, dropped_count) 
        VALUES ($1, $2, $3) 
        RETURNING id`,
@@ -308,7 +308,7 @@ module.exports = async function handler(req, res) {
       RETURNING id, (price_changed AND price < previous_price) AS is_price_drop;
     `;
 
-    const upsertResults = await sql(bulkQuery, valuesParams);
+    const upsertResults = await sql.query(bulkQuery, valuesParams);
     
     let inserted = 0;
     let updated = 0;

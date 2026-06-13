@@ -43,7 +43,7 @@ async function migrate() {
 
   for (const statement of statements) {
     try {
-      await sql(statement);
+      await sql.query(statement);
       console.log(`Executed: ${statement.split('\n')[0].trim()}...`);
     } catch (err) {
       console.error("Migration error on statement:", statement);

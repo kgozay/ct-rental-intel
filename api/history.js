@@ -17,7 +17,7 @@ module.exports = async function handler(req, res) {
       ORDER BY 1 ASC;
     `;
 
-    const rows = await sql(query);
+    const rows = await sql.query(query);
     
     // Structure results nicely for Recharts
     // Format date as YYYY-MM-DD

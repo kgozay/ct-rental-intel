@@ -16,7 +16,7 @@ module.exports = async function handler(req, res) {
 
     // 1. Filter by latest scrape if requested
     if (latestOnly === 'true') {
-      const latestScrapeResult = await sql(`SELECT id FROM scrapes ORDER BY id DESC LIMIT 1`);
+      const latestScrapeResult = await sql.query(`SELECT id FROM scrapes ORDER BY id DESC LIMIT 1`);
       if (latestScrapeResult.length > 0) {
         queryConditions.push(`scrape_id = $${paramIdx++}`);
         queryParams.push(latestScrapeResult[0].id);
@@ -77,11 +77,11 @@ module.exports = async function handler(req, res) {
       ORDER BY price_per_m2 ASC, price ASC;
     `;
 
-    const listings = await sql(listingsQuery, queryParams);
+    const listings = await sql.query(listingsQuery, queryParams);
 
     // 6. Fetch the last scraped timestamp
     let lastScraped = null;
-    const lastScrapeRow = await sql(`SELECT scraped_at FROM scrapes ORDER BY id DESC LIMIT 1`);
+    const lastScrapeRow = await sql.query(`SELECT scraped_at FROM scrapes ORDER BY id DESC LIMIT 1`);
     if (lastScrapeRow.length > 0) {
       lastScraped = lastScrapeRow[0].scraped_at;
     }
