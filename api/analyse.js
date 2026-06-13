@@ -123,7 +123,7 @@ Please write the analysis based on this data. Use bold text for numbers and subu
       ],
       generationConfig: {
         temperature: 0.2,
-        maxOutputTokens: 800
+        maxOutputTokens: 4096
       }
     };
 
