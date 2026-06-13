@@ -27,7 +27,14 @@ module.exports = async function handler(req, res) {
       const body = {
         deal_type: "Properties For Rent",
         location: suburb.location,
-        limit: 50
+        limit: 50,
+        includeListingDetails: true,
+        proxy: {
+          useApifyProxy: true
+        },
+        proxyConfiguration: {
+          useApifyProxy: true
+        }
       };
       
       const response = await fetch(url, {

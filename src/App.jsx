@@ -233,11 +233,6 @@ export default function App() {
           )}
         </main>
       )}
-
-      {/* SWAPPABLE FOOTER DIRECTION */}
-      <footer className="text-center mt-12 text-xs font-bold text-ink select-none">
-        Direction: <b>Electric & Ink</b> · Neo-brutalist Design Theme
-      </footer>
     </div>
   );
 }

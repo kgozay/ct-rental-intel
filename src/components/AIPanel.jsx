@@ -3,31 +3,34 @@ import React, { useState, useEffect } from 'react';
 export default function AIPanel({ filteredListings, filters }) {
   const [analysis, setAnalysis] = useState('');
   const [loading, setLoading] = useState(false);
-  const [streamedText, setStreamedText] = useState('');
+  const [typewriterIndex, setTypewriterIndex] = useState(0);
   const [generatedAt, setGeneratedAt] = useState(null);
 
   // Typewriter effect
   useEffect(() => {
     if (!analysis) {
-      setStreamedText('');
+      setTypewriterIndex(0);
       return;
     }
 
-    let i = 0;
-    setStreamedText('');
+    setTypewriterIndex(0);
     
     // speed: ~2 characters per tick to type relatively fast
     const interval = setInterval(() => {
-      if (i < analysis.length) {
-        setStreamedText(prev => prev + analysis.slice(i, i + 2));
-        i += 2;
-      } else {
-        clearInterval(interval);
-      }
+      setTypewriterIndex(prev => {
+        if (prev < analysis.length) {
+          return prev + 2;
+        } else {
+          clearInterval(interval);
+          return prev;
+        }
+      });
     }, 12);
 
     return () => clearInterval(interval);
   }, [analysis]);
+
+  const streamedText = analysis.slice(0, typewriterIndex);
 
   const handleAnalyse = async () => {
     setLoading(true);

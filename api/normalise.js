@@ -108,15 +108,17 @@ function extractBathrooms(title, description, rawBathrooms) {
 
 function extractSize(title, description, rawSize) {
   if (rawSize !== undefined && rawSize !== null) {
-    const val = parseInt(rawSize, 10);
+    const val = parseInt(String(rawSize).replace(/[\s,]/g, ''), 10);
     if (!isNaN(val)) return val;
   }
   const text = ((title || '') + ' ' + (description || '')).toLowerCase();
   
-  // Match size like "148m2", "148 m²", "148 sqm"
-  const sizeMatch = text.match(/(\d+)\s*(?:m2|m²|sqm|sq\s*meter)/i);
+  // Match size like "148m2", "148 m²", "148 sqm", "148 sq m", "148 sq.m", "148 square meters", etc.
+  const sizeMatch = text.match(/(?:floor)?\s*(\d+(?:[\s,]\d+)?)\s*(?:m2|m²|sq\.?\s*m|sq\.?\s*meter|sq\.?\s*metre|square\s*meter|square\s*metre)s?/i);
   if (sizeMatch) {
-    return parseInt(sizeMatch[1], 10);
+    const cleaned = sizeMatch[1].replace(/[\s,]/g, '');
+    const val = parseInt(cleaned, 10);
+    if (!isNaN(val)) return val;
   }
   
   return null;
