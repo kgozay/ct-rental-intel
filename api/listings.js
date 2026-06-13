@@ -110,6 +110,8 @@ module.exports = async function handler(req, res) {
     return res.status(200).json({
       listings: listings.map(l => ({
         ...l,
+        bedrooms: l.bedrooms ? parseFloat(l.bedrooms) : null,
+        bathrooms: l.bathrooms ? parseFloat(l.bathrooms) : null,
         price: parseInt(l.price, 10),
         size_m2: l.size_m2 ? parseInt(l.size_m2, 10) : null,
         price_per_m2: l.price_per_m2 ? parseInt(l.price_per_m2, 10) : null,
