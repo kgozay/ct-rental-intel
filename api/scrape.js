@@ -311,7 +311,13 @@ module.exports = async function handler(req, res) {
                               THEN listings.price ELSE listings.previous_price END,
         scrape_id = EXCLUDED.scrape_id,
         value_score = EXCLUDED.value_score,
-        scraped_at = EXCLUDED.scraped_at
+        scraped_at = EXCLUDED.scraped_at,
+        bedrooms = EXCLUDED.bedrooms,
+        bathrooms = EXCLUDED.bathrooms,
+        size_m2 = EXCLUDED.size_m2,
+        price_per_m2 = EXCLUDED.price_per_m2,
+        furnished = EXCLUDED.furnished,
+        address = EXCLUDED.address
       RETURNING id, (price_changed AND price < previous_price) AS is_price_drop;
     `;
 

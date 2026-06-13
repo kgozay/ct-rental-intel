@@ -113,8 +113,20 @@ export default function MapView({ listings }) {
           </div>
         `;
 
+        let lat = parseFloat(item.lat);
+        let lng = parseFloat(item.lng);
+        
+        // If the geocode is not precise, add a deterministic jitter to spread approximate listings around the suburb centroid
+        if (!item.geocode_precise) {
+          const idNum = parseInt(item.listing_id, 10) || 0;
+          const latJitter = ((idNum % 100) / 100 - 0.5) * 0.006; // -0.003 to 0.003 degrees offset
+          const lngJitter = (((idNum / 100) % 100) / 100 - 0.5) * 0.006;
+          lat += latJitter;
+          lng += lngJitter;
+        }
+
         // Create Leaflet circleMarker
-        const marker = L.circleMarker([parseFloat(item.lat), parseFloat(item.lng)], {
+        const marker = L.circleMarker([lat, lng], {
           radius: 8,
           fillColor: color,
           color: '#111111', // ink outline

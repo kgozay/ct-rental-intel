@@ -71,9 +71,80 @@ function parseAvailableDate(status) {
   return null;
 }
 
+function extractBedrooms(title, description, rawBedrooms) {
+  if (rawBedrooms !== undefined && rawBedrooms !== null) {
+    const val = parseFloat(rawBedrooms);
+    if (!isNaN(val)) return val;
+  }
+  const text = ((title || '') + ' ' + (description || '')).toLowerCase();
+  
+  // Look for decimals like "0.5 bedroom" or "1.5 beds"
+  const bedMatch = text.match(/(\d+(?:\.\d+)?)\s*(?:bedroom|bed|bd)/i);
+  if (bedMatch) {
+    return parseFloat(bedMatch[1]);
+  }
+  
+  if (text.includes('studio') || text.includes('bachelor')) {
+    return 0.5;
+  }
+  
+  return null;
+}
+
+function extractBathrooms(title, description, rawBathrooms) {
+  if (rawBathrooms !== undefined && rawBathrooms !== null) {
+    const val = parseFloat(rawBathrooms);
+    if (!isNaN(val)) return val;
+  }
+  const text = ((title || '') + ' ' + (description || '')).toLowerCase();
+  
+  const bathMatch = text.match(/(\d+(?:\.\d+)?)\s*(?:bathroom|bath|ba)/i);
+  if (bathMatch) {
+    return parseFloat(bathMatch[1]);
+  }
+  
+  return null;
+}
+
+function extractSize(title, description, rawSize) {
+  if (rawSize !== undefined && rawSize !== null) {
+    const val = parseInt(rawSize, 10);
+    if (!isNaN(val)) return val;
+  }
+  const text = ((title || '') + ' ' + (description || '')).toLowerCase();
+  
+  // Match size like "148m2", "148 m²", "148 sqm"
+  const sizeMatch = text.match(/(\d+)\s*(?:m2|m²|sqm|sq\s*meter)/i);
+  if (sizeMatch) {
+    return parseInt(sizeMatch[1], 10);
+  }
+  
+  return null;
+}
+
+function extractFurnished(title, description, rawFurnished) {
+  if (rawFurnished !== undefined && rawFurnished !== null) {
+    return !!rawFurnished;
+  }
+  const text = ((title || '') + ' ' + (description || '')).toLowerCase();
+  
+  if (text.includes('unfurnished') || text.includes('not furnished')) {
+    return false;
+  }
+  if (text.includes('furnished')) {
+    return true;
+  }
+  return null;
+}
+
 function normaliseListing(raw) {
   const price = raw.pricing?.price;
-  const size = raw.property?.floor_area?.value ?? null;
+  const title = raw.entity?.title || '';
+  const desc = raw.entity?.description || '';
+  
+  const bedrooms = extractBedrooms(title, desc, raw.property?.bedrooms);
+  const bathrooms = extractBathrooms(title, desc, raw.property?.bathrooms);
+  const size = extractSize(title, desc, raw.property?.floor_area?.value);
   const pricePerM2 = size ? Math.round(price / size) : null;
   
   const rawType = raw.property?.property_type || '';
@@ -97,12 +168,12 @@ function normaliseListing(raw) {
     url: raw.source_context?.listing_url || '',
     suburb: suburb,
     property_type: propType,
-    bedrooms: raw.property?.bedrooms ?? null,
-    bathrooms: raw.property?.bathrooms ?? null,
+    bedrooms: bedrooms,
+    bathrooms: bathrooms,
     price: price,
     size_m2: size,
     price_per_m2: pricePerM2,
-    furnished: raw.property?.furnished ?? null,
+    furnished: extractFurnished(title, desc, raw.property?.furnished),
     available_date: parseAvailableDate(raw.availability?.availability_status),
     address: raw.property?.features?.street_address || raw.location?.address || null,
     main_image_url: raw.media?.main_image_url ?? null,

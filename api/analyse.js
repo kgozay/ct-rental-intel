@@ -85,7 +85,7 @@ Recommendation: prioritize **Gardens** for space-to-cost optimization, or look a
     }
 
     // 3. Make REST call to Google Gemini API
-    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_KEY}`;
+    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_KEY}`;
     
     const body = {
       contents: [
