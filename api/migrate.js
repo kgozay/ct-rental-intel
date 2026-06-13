@@ -38,7 +38,20 @@ async function migrate() {
     )`,
     `CREATE INDEX IF NOT EXISTS idx_listings_suburb ON listings(suburb)`,
     `CREATE INDEX IF NOT EXISTS idx_listings_price ON listings(price)`,
-    `CREATE INDEX IF NOT EXISTS idx_listings_scrape_id ON listings(scrape_id)`
+    `CREATE INDEX IF NOT EXISTS idx_listings_scrape_id ON listings(scrape_id)`,
+    // Append-only snapshot of per-suburb medians, written once per suburb per scrape.
+    // The listings table is upsert-on-url (current state only), so it can't preserve
+    // history — this table is the source for the "Price Trends over Time" chart.
+    `CREATE TABLE IF NOT EXISTS suburb_medians (
+      id SERIAL PRIMARY KEY,
+      scrape_id INTEGER REFERENCES scrapes(id),
+      scraped_at TIMESTAMPTZ DEFAULT NOW(),
+      suburb TEXT NOT NULL,
+      median_price INTEGER,
+      median_ppm2 INTEGER,
+      listing_count INTEGER
+    )`,
+    `CREATE INDEX IF NOT EXISTS idx_suburb_medians_scrape ON suburb_medians(scrape_id)`
   ];
 
   for (const statement of statements) {

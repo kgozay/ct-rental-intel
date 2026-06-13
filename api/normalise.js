@@ -184,46 +184,61 @@ function normaliseListing(raw) {
   };
 }
 
+function medianOf(nums) {
+  const arr = nums.filter(n => n !== null && n !== undefined && !isNaN(n)).sort((a, b) => a - b);
+  if (arr.length === 0) return null;
+  const mid = Math.floor(arr.length / 2);
+  return arr.length % 2 !== 0 ? arr[mid] : Math.round((arr[mid - 1] + arr[mid]) / 2);
+}
+
+/**
+ * value_score = how a listing compares to its suburb's market. >1 = cheaper than the
+ * benchmark (good value), <1 = pricier. Thresholds: >1.15 good, 0.85–1.15 fair, <0.85 expensive.
+ *
+ * Primary basis is price/m² (size-aware, matches the R/m² legend in the UI):
+ *   value_score = suburbMedian(price_per_m2) / listing.price_per_m2
+ * Listings without a size fall back to a suburb+bedrooms median-price ratio so they
+ * still get a score:
+ *   value_score = suburbBedMedian(price) / listing.price
+ */
 function computeValueScores(normalisedListings) {
-  // 1. Group listings by [suburb][bedrooms] and extract prices
+  // 1a. Per-suburb median price_per_m2 (size-based, primary basis).
+  const suburbPpm2 = {};
+  // 1b. Per-suburb+bedrooms median price (fallback for sizeless listings).
   const suburbBedPrices = {};
-  
+
   normalisedListings.forEach(item => {
+    if (item.price_per_m2 !== null && item.price_per_m2 !== undefined) {
+      (suburbPpm2[item.suburb] ||= []).push(item.price_per_m2);
+    }
     if (item.price !== null && item.price !== undefined && item.bedrooms !== null && item.bedrooms !== undefined) {
-      const key = `${item.suburb}_beds_${item.bedrooms}`;
-      if (!suburbBedPrices[key]) {
-        suburbBedPrices[key] = [];
-      }
-      suburbBedPrices[key].push(item.price);
+      (suburbBedPrices[`${item.suburb}_beds_${item.bedrooms}`] ||= []).push(item.price);
     }
   });
-  
-  // 2. Compute median price for each [suburb][bedrooms] group
-  const suburbBedMedians = {};
-  for (const key in suburbBedPrices) {
-    const prices = suburbBedPrices[key].sort((a, b) => a - b);
-    const mid = Math.floor(prices.length / 2);
-    const median = prices.length % 2 !== 0 
-      ? prices[mid] 
-      : Math.round((prices[mid - 1] + prices[mid]) / 2);
-    suburbBedMedians[key] = median;
-  }
-  
-  // 3. Compute value score for each listing based on its suburb-bed median price
+
+  const suburbPpm2Median = {};
+  for (const sub in suburbPpm2) suburbPpm2Median[sub] = medianOf(suburbPpm2[sub]);
+
+  const suburbBedMedian = {};
+  for (const key in suburbBedPrices) suburbBedMedian[key] = medianOf(suburbBedPrices[key]);
+
+  // 2. Score each listing — prefer the price/m² basis, fall back to suburb+beds price.
   return normalisedListings.map(item => {
-    if (item.price === null || item.price === undefined || item.bedrooms === null || item.bedrooms === undefined) {
-      return { ...item, value_score: null };
+    if (item.price_per_m2 !== null && item.price_per_m2 !== undefined) {
+      const med = suburbPpm2Median[item.suburb];
+      if (med) {
+        return { ...item, value_score: parseFloat((med / item.price_per_m2).toFixed(2)) };
+      }
     }
-    
-    const key = `${item.suburb}_beds_${item.bedrooms}`;
-    const median = suburbBedMedians[key];
-    if (!median) {
-      return { ...item, value_score: null };
+
+    if (item.price !== null && item.price !== undefined && item.bedrooms !== null && item.bedrooms !== undefined) {
+      const med = suburbBedMedian[`${item.suburb}_beds_${item.bedrooms}`];
+      if (med) {
+        return { ...item, value_score: parseFloat((med / item.price).toFixed(2)) };
+      }
     }
-    
-    // value_score = medianPriceForBedsInSuburb / listing.price
-    const score = parseFloat((median / item.price).toFixed(2));
-    return { ...item, value_score: score };
+
+    return { ...item, value_score: null };
   });
 }
 

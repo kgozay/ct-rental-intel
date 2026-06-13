@@ -13,10 +13,10 @@
     "@neondatabase/serverless": "^1.1.0",
     "autoprefixer": "^10.5.0",
     "leaflet": "^1.9.4",
-    "pg": "^8.21.0",
     "postcss": "^8.5.15",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
+    "react-router-dom": "^7.17.0",
     "recharts": "^3.8.1",
     "tailwindcss": "^3.4.19"
   },

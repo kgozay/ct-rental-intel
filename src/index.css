@@ -25,6 +25,26 @@ body {
   animation: rowin 0.4s forwards;
 }
 
+/* Landing page entrance animations */
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(18px); }
+  to   { opacity: 1; transform: none; }
+}
+
+.fade-up {
+  opacity: 0;
+  animation: fadeUp 0.6s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fade-up,
+  .stagger-row {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+}
+
 /* Leaflet Popup Overrides */
 .leaflet-popup-content-wrapper {
   border: 3px solid #111111 !important;

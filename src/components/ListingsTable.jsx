@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import ValueBadge from './ValueBadge';
 import { SUBURBS_LIST } from '../utils/suburbs';
 
@@ -24,14 +24,15 @@ export default function ListingsTable({ listings, filteredListings, filters, set
       setSortAsc(!sortAsc);
     } else {
       setSortField(field);
-      setSortAsc(true);
+      // Higher value_score = better, so default that column to descending.
+      setSortAsc(field !== 'value_score');
     }
   };
 
-  // 3. Apply sorting on filtered listings
-  const sortedListings = [...filteredListings].sort((a, b) => {
+  // 3. Apply sorting on filtered listings (memoized)
+  const sortedListings = useMemo(() => [...filteredListings].sort((a, b) => {
     let valA, valB;
-    
+
     switch (sortField) {
       case 'suburb':
         valA = a.suburb;
@@ -74,7 +75,7 @@ export default function ListingsTable({ listings, filteredListings, filters, set
     if (valA < valB) return sortAsc ? -1 : 1;
     if (valA > valB) return sortAsc ? 1 : -1;
     return 0;
-  });
+  }), [filteredListings, sortField, sortAsc]);
 
   return (
     <div className="tableview">

@@ -1,7 +1,13 @@
 {
   "functions": {
     "api/*.js": {
-      "maxDuration": 300
+      "maxDuration": 60
     }
-  }
+  },
+  "crons": [
+    { "path": "/api/scrape?force=true", "schedule": "0 5 */3 * *" }
+  ],
+  "rewrites": [
+    { "source": "/((?!api/).*)", "destination": "/index.html" }
+  ]
 }

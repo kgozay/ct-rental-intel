@@ -1,10 +1,22 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 
 export default function AIPanel({ filteredListings, filters }) {
   const [analysis, setAnalysis] = useState('');
   const [loading, setLoading] = useState(false);
   const [typewriterIndex, setTypewriterIndex] = useState(0);
   const [generatedAt, setGeneratedAt] = useState(null);
+
+  // Cache analyses by a signature of the inputs so re-clicking Generate with the
+  // same filters/data doesn't refire (and re-bill) the Gemini call.
+  const cacheRef = useRef({});
+  const signature = JSON.stringify({
+    suburbs: [...filters.suburbs].sort(),
+    maxPrice: filters.maxPrice,
+    minBeds: filters.minBeds,
+    furnished: filters.furnished,
+    goodValueOnly: filters.goodValueOnly,
+    count: filteredListings.length
+  });
 
   // Typewriter effect
   useEffect(() => {
@@ -33,6 +45,14 @@ export default function AIPanel({ filteredListings, filters }) {
   const streamedText = analysis.slice(0, typewriterIndex);
 
   const handleAnalyse = async () => {
+    // Serve from cache if we've already analysed this exact filter/data signature.
+    const cached = cacheRef.current[signature];
+    if (cached) {
+      setAnalysis(cached.analysis);
+      setGeneratedAt(cached.generatedAt);
+      return;
+    }
+
     setLoading(true);
     setAnalysis('');
     try {
@@ -52,6 +72,7 @@ export default function AIPanel({ filteredListings, filters }) {
         const data = await response.json();
         setAnalysis(data.analysis);
         setGeneratedAt(data.generatedAt);
+        cacheRef.current[signature] = { analysis: data.analysis, generatedAt: data.generatedAt };
       } else {
         setAnalysis("Failed to generate analysis. Please check that your Gemini API key is configured.");
       }

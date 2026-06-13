@@ -9,14 +9,20 @@ module.exports = async function handler(req, res) {
 
   try {
     const { suburb, maxPrice, minBeds, furnished, latestOnly } = req.query;
-    
+
     let queryConditions = [];
     let queryParams = [];
     let paramIdx = 1;
 
+    // Fetch the latest scrape once — its id is reused for the latestOnly filter,
+    // and its timestamp is returned as lastScraped (avoids a second round-trip).
+    const latestScrapeResult = await sql.query(
+      `SELECT id, scraped_at FROM scrapes ORDER BY id DESC LIMIT 1`
+    );
+    const lastScraped = latestScrapeResult.length > 0 ? latestScrapeResult[0].scraped_at : null;
+
     // 1. Filter by latest scrape if requested
     if (latestOnly === 'true') {
-      const latestScrapeResult = await sql.query(`SELECT id FROM scrapes ORDER BY id DESC LIMIT 1`);
       if (latestScrapeResult.length > 0) {
         queryConditions.push(`scrape_id = $${paramIdx++}`);
         queryParams.push(latestScrapeResult[0].id);
@@ -79,14 +85,7 @@ module.exports = async function handler(req, res) {
 
     const listings = await sql.query(listingsQuery, queryParams);
 
-    // 6. Fetch the last scraped timestamp
-    let lastScraped = null;
-    const lastScrapeRow = await sql.query(`SELECT scraped_at FROM scrapes ORDER BY id DESC LIMIT 1`);
-    if (lastScrapeRow.length > 0) {
-      lastScraped = lastScrapeRow[0].scraped_at;
-    }
-
-    // 7. Compute median price_per_m2 per suburb from the resulting array
+    // 6. Compute median price_per_m2 per suburb from the resulting array
     const suburbPrices = {};
     listings.forEach(item => {
       if (item.price_per_m2 !== null && item.price_per_m2 !== undefined) {
