@@ -58,7 +58,7 @@ export default function App() {
     if (!silent) setLoading(true);
     let fetchedLastScraped = null;
     try {
-      const listRes = await fetch('/api/listings?latestOnly=true');
+      const listRes = await fetch('/api/listings');
       if (listRes.ok) {
         const listData = await listRes.json();
         setListings(listData.listings);

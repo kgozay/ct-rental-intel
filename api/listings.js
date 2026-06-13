@@ -8,33 +8,27 @@ module.exports = async function handler(req, res) {
   }
 
   try {
-    const { suburb, maxPrice, minBeds, furnished, latestOnly } = req.query;
+    const { suburb, maxPrice, minBeds, furnished } = req.query;
 
     let queryConditions = [];
     let queryParams = [];
     let paramIdx = 1;
 
-    // Fetch the latest scrape once — its id is reused for the latestOnly filter,
-    // and its timestamp is returned as lastScraped (avoids a second round-trip).
+    // Fetch the latest scrape timestamp to surface in the UI header.
+    // We no longer filter by scrape_id — the listings table upserts on url
+    // (unique), so all rows already represent current state across all suburbs.
     const latestScrapeResult = await sql.query(
       `SELECT id, scraped_at FROM scrapes ORDER BY id DESC LIMIT 1`
     );
     const lastScraped = latestScrapeResult.length > 0 ? latestScrapeResult[0].scraped_at : null;
 
-    // 1. Filter by latest scrape if requested
-    if (latestOnly === 'true') {
-      if (latestScrapeResult.length > 0) {
-        queryConditions.push(`scrape_id = $${paramIdx++}`);
-        queryParams.push(latestScrapeResult[0].id);
-      } else {
-        // No scrapes exist yet
-        return res.status(200).json({
-          listings: [],
-          medians: {},
-          lastScraped: null,
-          totalCount: 0
-        });
-      }
+    if (latestScrapeResult.length === 0) {
+      return res.status(200).json({
+        listings: [],
+        medians: {},
+        lastScraped: null,
+        totalCount: 0
+      });
     }
 
     // 2. Filter by suburbs (CSV)
