@@ -4,6 +4,7 @@ import ListingsTable from './components/ListingsTable';
 import MapView from './components/MapView';
 import PriceChart from './components/PriceChart';
 import AIPanel from './components/AIPanel';
+import SuburbComparison from './components/SuburbComparison';
 import { SUBURBS_LIST } from './utils/suburbs';
 
 export default function App() {
@@ -11,26 +12,48 @@ export default function App() {
   const [medians, setMedians] = useState({});
   const [history, setHistory] = useState([]);
   const [lastScraped, setLastScraped] = useState(null);
-  
+
   const [loading, setLoading] = useState(true);
   const [scraping, setScraping] = useState(false);
-  const [notice, setNotice] = useState(null); // { type: 'info' | 'error', text }
+  const [notice, setNotice] = useState(null);
   const [activeTab, setActiveTab] = useState('table');
-  
+
+  // Bedroom filter for the history chart (drives a separate /api/history fetch)
+  const [historyBeds, setHistoryBeds] = useState(null);
+
+  // Shortlist — persisted to localStorage
+  const [shortlisted, setShortlisted] = useState(
+    () => new Set(JSON.parse(localStorage.getItem('shortlist') || '[]'))
+  );
+  const toggleShortlist = (url) => {
+    setShortlisted(prev => {
+      const next = new Set(prev);
+      next.has(url) ? next.delete(url) : next.add(url);
+      localStorage.setItem('shortlist', JSON.stringify([...next]));
+      return next;
+    });
+  };
+
+  // "New since last visit" — record when the user last opened the dashboard
+  const [lastVisit] = useState(() => {
+    const prev = localStorage.getItem('lastVisit');
+    localStorage.setItem('lastVisit', new Date().toISOString());
+    return prev;
+  });
+
   const [filters, setFilters] = useState({
     suburbs: [...SUBURBS_LIST],
     maxPrice: 80000,
     minBeds: null,
     furnished: null,
-    goodValueOnly: false
+    goodValueOnly: false,
+    priceDropOnly: false,
+    availableBefore: '',
+    shortlistOnly: false,
   });
 
-  // Bounded poll timer for the async scrape (cleared on unmount).
   const pollRef = useRef(null);
 
-  // 1. Fetch latest listings and historical medians. Returns the lastScraped value
-  //    so the scrape poll can detect when fresh data has landed. Pass silent=true to
-  //    refresh data without flashing the full-page loading state.
   const fetchData = async (silent = false) => {
     if (!silent) setLoading(true);
     let fetchedLastScraped = null;
@@ -62,9 +85,15 @@ export default function App() {
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
   }, []);
 
-  // 2. Refresh Listings — launches an async scrape. /api/scrape only STARTS the Apify
-  //    runs; results arrive via webhook ingest over the next minute or two, so we poll
-  //    the dashboard data until lastScraped advances (or we time out).
+  // Re-fetch history when the bedroom filter on the chart changes
+  useEffect(() => {
+    const url = historyBeds ? `/api/history?beds=${historyBeds}` : '/api/history';
+    fetch(url)
+      .then(r => r.ok ? r.json() : null)
+      .then(data => { if (data) setHistory(data.history); })
+      .catch(() => {});
+  }, [historyBeds]);
+
   const handleRefresh = async () => {
     if (scraping) return;
     setScraping(true);
@@ -78,7 +107,6 @@ export default function App() {
       const data = await response.json().catch(() => ({}));
 
       if (response.ok && data.skipped) {
-        // Cooldown active — data is still fresh, no Apify credits spent.
         const next = data.nextAllowed ? new Date(data.nextAllowed) : null;
         const nextText = next
           ? next.toLocaleString('en-ZA', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false }).replace(',', '')
@@ -93,7 +121,6 @@ export default function App() {
           type: 'info',
           text: 'Scrape started — new listings appear within a minute or two. Refreshing automatically…'
         });
-        // Poll for fresh data: every 20s for up to ~2 min.
         if (pollRef.current) clearInterval(pollRef.current);
         let attempts = 0;
         const MAX_ATTEMPTS = 6;
@@ -121,41 +148,34 @@ export default function App() {
     }
   };
 
-  // 3. Client-side filtration logic (memoized — only recompute when data/filters change)
   const filteredListings = useMemo(() => listings.filter(item => {
-    // Suburbs
     if (filters.suburbs.length > 0 && !filters.suburbs.includes(item.suburb)) return false;
-    // Max Price
     if (item.price > filters.maxPrice) return false;
-    // Min Beds
     if (filters.minBeds !== null && (item.bedrooms === null || item.bedrooms < filters.minBeds)) return false;
-    // Furnished
     if (filters.furnished !== null && item.furnished !== filters.furnished) return false;
-    // Good Value Only
     if (filters.goodValueOnly && (item.value_score === null || item.value_score <= 1.15)) return false;
-
+    if (filters.priceDropOnly && !(item.previous_price && item.price < item.previous_price)) return false;
+    if (filters.availableBefore && item.available_date && item.available_date > filters.availableBefore) return false;
+    if (filters.shortlistOnly && !shortlisted.has(item.url)) return false;
     return true;
-  }), [listings, filters]);
+  }), [listings, filters, shortlisted]);
 
-  // 4. Compute Top KPI Summaries Dynamically
   const activeSuburbsCount = new Set(filteredListings.map(l => l.suburb)).size;
   const goodValueCount = filteredListings.filter(l => l.value_score > 1.15).length;
-  
+
   const rates = filteredListings.map(l => l.price_per_m2).filter(r => r !== null).sort((a, b) => a - b);
   let medianRate = '—';
   if (rates.length > 0) {
     const mid = Math.floor(rates.length / 2);
-    medianRate = rates.length % 2 !== 0 
-      ? `R ${rates[mid]}` 
+    medianRate = rates.length % 2 !== 0
+      ? `R ${rates[mid]}`
       : `R ${Math.round((rates[mid - 1] + rates[mid]) / 2)}`;
   }
 
-  // Format Date format to match mockup header
   const formatScrapeDate = (dateStr) => {
     if (!dateStr) return 'Never';
     const date = new Date(dateStr);
-    const options = { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false };
-    return date.toLocaleString('en-ZA', options).replace(',', '');
+    return date.toLocaleString('en-ZA', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false }).replace(',', '');
   };
 
   return (
@@ -171,7 +191,7 @@ export default function App() {
           <button
             onClick={handleRefresh}
             disabled={scraping}
-            className={`border-3 border-ink bg-yellow text-ink font-extrabold uppercase px-[18px] py-[11px] text-[13px] tracking-[0.5px] cursor-pointer transition-all duration-75 select-none hover:translate-x-[-1px] hover:translate-y-[-1px] hover:shadow-[4px_4px_0_#111111] active:translate-x-[4px] active:translate-y-[4px] active:shadow-none disabled:bg-neutral-300 disabled:text-neutral-500 disabled:cursor-not-allowed`}
+            className="border-3 border-ink bg-yellow text-ink font-extrabold uppercase px-[18px] py-[11px] text-[13px] tracking-[0.5px] cursor-pointer transition-all duration-75 select-none hover:translate-x-[-1px] hover:translate-y-[-1px] hover:shadow-[4px_4px_0_#111111] active:translate-x-[4px] active:translate-y-[4px] active:shadow-none disabled:bg-neutral-300 disabled:text-neutral-500 disabled:cursor-not-allowed"
           >
             {scraping ? '⏳ Scraping P24 (~120s)...' : '↻ Refresh Listings'}
           </button>
@@ -197,11 +217,12 @@ export default function App() {
       )}
 
       {/* DASHBOARD TAB CONTROLS */}
-      <div className="flex gap-3.5 mb-6 select-none">
+      <div className="flex flex-wrap gap-3.5 mb-6 select-none">
         {[
           { id: 'table', label: 'Table' },
           { id: 'charts', label: 'Charts' },
           { id: 'map', label: 'Map' },
+          { id: 'compare', label: 'Compare' },
           { id: 'ai', label: 'AI Analysis' }
         ].map(tab => {
           const isActive = activeTab === tab.id;
@@ -249,10 +270,10 @@ export default function App() {
         </div>
         <div className="bg-white border-[3px] border-ink shadow-[4px_4px_0_#111111] p-4 rounded-none">
           <div className="text-3xl md:text-[34px] font-black line-clamp-1 leading-none text-ink">
-            {goodValueCount}
+            {shortlisted.size > 0 ? shortlisted.size : goodValueCount}
           </div>
           <div className="text-[11px] font-black uppercase tracking-wider text-ink/70 mt-1.5">
-            Good Value
+            {shortlisted.size > 0 ? 'Shortlisted' : 'Good Value'}
           </div>
         </div>
       </div>
@@ -272,6 +293,9 @@ export default function App() {
               filteredListings={filteredListings}
               filters={filters}
               setFilters={setFilters}
+              shortlisted={shortlisted}
+              toggleShortlist={toggleShortlist}
+              lastVisit={lastVisit}
             />
           )}
 
@@ -279,12 +303,20 @@ export default function App() {
             <PriceChart
               listings={filteredListings}
               history={history}
+              historyBeds={historyBeds}
+              setHistoryBeds={setHistoryBeds}
             />
           )}
 
           {activeTab === 'map' && (
-            <MapView
-              listings={filteredListings}
+            <MapView listings={filteredListings} />
+          )}
+
+          {activeTab === 'compare' && (
+            <SuburbComparison
+              listings={listings}
+              history={history}
+              medians={medians}
             />
           )}
 

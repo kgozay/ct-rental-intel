@@ -55,7 +55,7 @@ const ScatterTooltip = ({ active, payload }) => {
   return null;
 };
 
-export default function PriceChart({ listings, history }) {
+export default function PriceChart({ listings, history, historyBeds, setHistoryBeds }) {
   // --- CHART 1: MEDIAN BY SUBURB & BED COUNT ---
   const bedCounts = [1, 2, 3];
   const chart1Data = bedCounts.map(beds => {
@@ -120,9 +120,24 @@ export default function PriceChart({ listings, history }) {
 
       {/* Chart 2: Historical Timeline (only show if data points > 0) */}
       <div className="border-[3px] border-ink bg-white p-5 shadow-[6px_6px_0_#111111] rounded-none">
-        <h2 className="inline-block bg-ink text-paper text-xs font-black uppercase tracking-wider px-2.5 py-1 mb-6">
-          Price Trends over Time (Suburbs Medians)
-        </h2>
+        <div className="flex flex-wrap items-center gap-4 mb-6">
+          <h2 className="inline-block bg-ink text-paper text-xs font-black uppercase tracking-wider px-2.5 py-1">
+            Price Trends over Time
+          </h2>
+          <div className="flex gap-1 select-none">
+            {[{ label: 'All', value: null }, { label: '1 Bed', value: 1 }, { label: '2 Bed', value: 2 }, { label: '3 Bed', value: 3 }].map(opt => (
+              <button
+                key={opt.label}
+                onClick={() => setHistoryBeds(opt.value)}
+                className={`border-2 border-ink px-3 py-1 text-xs font-bold cursor-pointer transition-colors duration-100 ${
+                  historyBeds === opt.value ? 'bg-ink text-paper' : 'bg-white text-ink hover:bg-neutral-100'
+                }`}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+        </div>
         {chart2Data.length <= 1 ? (
           <div className="flex items-center justify-content-center h-80 bg-neutral-50 border-2 border-dashed border-ink/30 text-neutral-400 font-bold p-4 text-center">
             Timeline requires at least 2 historical scrapes. Add a daily Cron scheduled scrape to begin collecting metrics.

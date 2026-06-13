@@ -8,14 +8,19 @@ module.exports = async function handler(req, res) {
   }
 
   try {
+    const { beds } = req.query;
+    const bedsVal = beds ? parseInt(beds, 10) : null;
+
     // Read from the append-only suburb_medians snapshots. The listings table is
     // upsert-on-url (current state only), so it cannot preserve history — these
     // snapshots are written once per suburb per scrape by api/ingest.js.
     // Average the medians per day in case of multiple scrapes on the same day.
+    // bedrooms IS NULL = overall median; a specific value = per-bedroom breakdown.
+    const bedsFilter = bedsVal ? `AND bedrooms = ${bedsVal}` : `AND bedrooms IS NULL`;
     const query = `
       SELECT date_trunc('day', scraped_at) as date, suburb, ROUND(AVG(median_price)) as median
       FROM suburb_medians
-      WHERE median_price IS NOT NULL
+      WHERE median_price IS NOT NULL ${bedsFilter}
       GROUP BY 1, 2
       ORDER BY 1 ASC;
     `;

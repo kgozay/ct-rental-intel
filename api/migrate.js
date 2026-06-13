@@ -49,9 +49,11 @@ async function migrate() {
       suburb TEXT NOT NULL,
       median_price INTEGER,
       median_ppm2 INTEGER,
-      listing_count INTEGER
+      listing_count INTEGER,
+      bedrooms INTEGER
     )`,
-    `CREATE INDEX IF NOT EXISTS idx_suburb_medians_scrape ON suburb_medians(scrape_id)`
+    `CREATE INDEX IF NOT EXISTS idx_suburb_medians_scrape ON suburb_medians(scrape_id)`,
+    `ALTER TABLE suburb_medians ADD COLUMN IF NOT EXISTS bedrooms INTEGER`
   ];
 
   for (const statement of statements) {

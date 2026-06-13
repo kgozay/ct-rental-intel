@@ -156,11 +156,24 @@ module.exports = async function handler(req, res) {
     // 7. Append an immutable median snapshot for the history time-series.
     const medianPrice = median(listings.map(l => l.price));
     const medianPpm2 = median(listings.map(l => l.price_per_m2));
+    // Overall row (bedrooms = NULL) — backward-compatible with existing history query.
     await sql.query(
       `INSERT INTO suburb_medians (scrape_id, suburb, median_price, median_ppm2, listing_count)
        VALUES ($1, $2, $3, $4, $5)`,
       [scrapeId, suburbName, medianPrice, medianPpm2, upserted.length]
     );
+    // Per-bedroom rows — power the bedroom-segmented history chart.
+    for (const beds of [1, 2, 3]) {
+      const bedListings = listings.filter(l => l.bedrooms === beds);
+      if (bedListings.length >= 2) {
+        await sql.query(
+          `INSERT INTO suburb_medians (scrape_id, suburb, median_price, median_ppm2, listing_count, bedrooms)
+           VALUES ($1, $2, $3, $4, $5, $6)`,
+          [scrapeId, suburbName, median(bedListings.map(l => l.price)),
+           median(bedListings.map(l => l.price_per_m2)), bedListings.length, beds]
+        );
+      }
+    }
 
     console.log(`Ingest ${suburbName} (scrape #${scrapeId}): upserted ${upserted.length}, dropped ${droppedCount}`);
     return res.status(200).json({

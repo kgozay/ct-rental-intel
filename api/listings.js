@@ -74,10 +74,10 @@ module.exports = async function handler(req, res) {
       : '';
 
     const listingsQuery = `
-      SELECT id, scrape_id, listing_id, url, suburb, property_type, bedrooms, bathrooms, 
-             price, size_m2, price_per_m2, value_score, furnished, available_date, 
-             address, lat, lng, geocode_precise, main_image_url, agency_name, 
-             price_changed, previous_price, scraped_at
+      SELECT id, scrape_id, listing_id, url, suburb, property_type, bedrooms, bathrooms,
+             price, size_m2, price_per_m2, value_score, furnished, available_date,
+             address, lat, lng, geocode_precise, main_image_url, agency_name,
+             price_changed, previous_price, scraped_at, created_at
       FROM listings
       ${whereClause}
       ORDER BY price_per_m2 ASC, price ASC;
@@ -117,7 +117,8 @@ module.exports = async function handler(req, res) {
         value_score: l.value_score ? parseFloat(l.value_score) : null,
         lat: l.lat ? parseFloat(l.lat) : null,
         lng: l.lng ? parseFloat(l.lng) : null,
-        previous_price: l.previous_price ? parseInt(l.previous_price, 10) : null
+        previous_price: l.previous_price ? parseInt(l.previous_price, 10) : null,
+        created_at: l.created_at ? new Date(l.created_at).toISOString() : null
       })),
       medians,
       lastScraped,
