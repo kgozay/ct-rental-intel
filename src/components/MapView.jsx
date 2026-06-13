@@ -1,6 +1,13 @@
-import React, { useEffect, useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+
+const esc = (s) => String(s ?? '')
+  .replace(/&/g, '&amp;')
+  .replace(/</g, '&lt;')
+  .replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;')
+  .replace(/'/g, '&#39;');
 
 export default function MapView({ listings }) {
   const mapContainer = useRef(null);
@@ -63,8 +70,8 @@ export default function MapView({ listings }) {
           color = '#f59e0b'; // R15k - R22k (Amber)
         }
 
-        // Opacity: 0.7 for precise geocodes, 0.3 for approximate centroids
-        const opacity = item.geocode_precise ? 0.7 : 0.3;
+        // Opacity: 0.75 for precise geocodes, 0.25 for approximate centroids
+        const fillOpacity = item.geocode_precise ? 0.75 : 0.25;
 
         // Custom Value Badge HTML inside popup
         let valueBadgeHtml = '';
@@ -91,22 +98,22 @@ export default function MapView({ listings }) {
           `;
         }
 
-        // Neo-Brutalist Popup HTML Template
+        // Neo-Brutalist Popup HTML Template (escaped variables)
         const popupHtml = `
           <div style="font-family: 'Helvetica Neue', Arial, sans-serif; padding: 2px; color: #111;">
-            <b style="font-size: 13px; text-transform: uppercase; display: block; border-bottom: 2px solid #111; padding-bottom: 4px; margin-bottom: 6px;">${item.address || item.suburb}</b>
+            <b style="font-size: 13px; text-transform: uppercase; display: block; border-bottom: 2px solid #111; padding-bottom: 4px; margin-bottom: 6px;">${esc(item.address || item.suburb)}</b>
             <div style="font-size: 11px; font-weight: bold; margin-bottom: 4px;">
-              ${item.bedrooms ? item.bedrooms + ' bed' : 'Room/Studio'} 
-              ${item.size_m2 ? '· ' + item.size_m2 + 'm²' : ''} 
-              <span style="opacity: 0.6; font-size: 9px;">(${item.suburb})</span>
+              ${item.bedrooms ? esc(item.bedrooms) + ' bed' : 'Room/Studio'} 
+              ${item.size_m2 ? '· ' + esc(item.size_m2) + 'm²' : ''} 
+              <span style="opacity: 0.6; font-size: 9px;">(${esc(item.suburb)})</span>
             </div>
             <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 6px;">
               <span style="font-weight: 900; font-size: 14px; color: #111;">R ${item.price.toLocaleString('en-ZA')}</span>
-              <span style="font-size: 10px; font-weight: 800; opacity: 0.7;">${item.price_per_m2 ? item.price_per_m2 + ' R/m²' : ''}</span>
+              <span style="font-size: 10px; font-weight: 800; opacity: 0.7;">${item.price_per_m2 ? esc(item.price_per_m2) + ' R/m²' : ''}</span>
             </div>
             ${valueBadgeHtml}
             <div style="margin-top: 10px;">
-              <a href="${item.url}" target="_blank" style="display: block; text-align: center; border: 2px solid #111; background: #FFD23F; padding: 4px; font-size: 11px; font-weight: 900; text-decoration: none; color: #111; box-shadow: 2px 2px 0 #111;">
+              <a href="${esc(item.url)}" target="_blank" style="display: block; text-align: center; border: 2px solid #111; background: #FFD23F; padding: 4px; font-size: 11px; font-weight: 900; text-decoration: none; color: #111; box-shadow: 2px 2px 0 #111;">
                 VIEW LISTING ↗
               </a>
             </div>
@@ -127,12 +134,13 @@ export default function MapView({ listings }) {
 
         // Create Leaflet circleMarker
         const marker = L.circleMarker([lat, lng], {
-          radius: 8,
+          radius: item.geocode_precise ? 8 : 6,
           fillColor: color,
           color: '#111111', // ink outline
-          weight: 2,
-          fillOpacity: opacity,
-          opacity: 1.0
+          weight: item.geocode_precise ? 2 : 1.5,
+          fillOpacity: fillOpacity,
+          opacity: 1.0,
+          dashArray: item.geocode_precise ? null : '3,3'
         });
 
         // Bind popup and add to layer group
@@ -150,8 +158,21 @@ export default function MapView({ listings }) {
       {/* Map Element */}
       <div ref={mapContainer} className="w-full h-full" />
 
+      {/* Empty State Overlay */}
+      {listings.length === 0 && (
+        <div className="absolute inset-0 bg-white/95 border-[3px] border-ink flex flex-col items-center justify-center z-[1000] p-6 text-center select-none">
+          <div className="text-4xl mb-4">📍</div>
+          <div className="text-base font-black uppercase tracking-tight text-ink mb-1">
+            No Listings to Map
+          </div>
+          <div className="text-xs text-neutral-500 font-bold max-w-xs">
+            All listings have been filtered out. Try adjusting your suburb or price filters to see properties on the map.
+          </div>
+        </div>
+      )}
+
       {/* Brutalist Legend */}
-      <div className="absolute left-4 bottom-4 bg-white border-[3px] border-ink p-3 shadow-[4px_4px_0_#111111] text-xs font-bold z-[1000] rounded-none max-w-[160px] select-none pointer-events-auto">
+      <div className="absolute left-4 bottom-4 bg-white border-[3px] border-ink p-3 shadow-[4px_4px_0_#111111] text-xs font-bold z-[1000] rounded-none max-w-[170px] select-none pointer-events-auto">
         <div className="font-extrabold uppercase tracking-wide border-b-2 border-ink pb-1 mb-2">Price Band</div>
         <div className="flex flex-col gap-1.5">
           <div className="flex items-center gap-2">
@@ -171,9 +192,9 @@ export default function MapView({ listings }) {
             <span>&gt; R35k</span>
           </div>
         </div>
-        <div className="mt-2 pt-1.5 border-t border-dashed border-ink/40 text-[9px] opacity-60">
-          * Solid color = precise geocode<br/>
-          * Faded color = approximate suburb centroid
+        <div className="mt-2 pt-1.5 border-t border-dashed border-ink/40 text-[0.5625rem] opacity-60">
+          * Solid outline & filled circle = precise geocode<br/>
+          * Dashed outline & semi-transparent circle = approximate suburb centroid
         </div>
       </div>
     </div>

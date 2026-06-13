@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import { useMemo } from 'react';
 import { SUBURBS_LIST } from '../utils/suburbs';
 
 const TREND_COLORS = {
@@ -62,7 +62,7 @@ export default function SuburbComparison({ listings, history, medians }) {
               <div className="font-black text-sm uppercase tracking-wide text-ink leading-tight">
                 {suburb}
               </div>
-              <div className="text-[11px] font-bold text-neutral-500 mt-0.5">
+              <div className="text-[0.6875rem] font-bold text-neutral-500 mt-0.5">
                 {count} listing{count !== 1 ? 's' : ''}
               </div>
             </div>
@@ -70,28 +70,28 @@ export default function SuburbComparison({ listings, history, medians }) {
             {/* Stats */}
             <div className="flex flex-col gap-2 text-xs">
               <div className="flex justify-between items-center">
-                <span className="font-bold uppercase text-neutral-500 text-[11px]">Median Rent</span>
+                <span className="font-bold uppercase text-neutral-500 text-[0.6875rem]">Median Rent</span>
                 <span className="font-black text-ink">
                   {medianRent ? `R ${medianRent.toLocaleString('en-ZA')}` : '—'}
                 </span>
               </div>
 
               <div className="flex justify-between items-center">
-                <span className="font-bold uppercase text-neutral-500 text-[11px]">Median R/m²</span>
+                <span className="font-bold uppercase text-neutral-500 text-[0.6875rem]">Median R/m²</span>
                 <span className="font-black text-ink">
                   {medianPrice ? `R ${medianPrice.toLocaleString('en-ZA')}` : '—'}
                 </span>
               </div>
 
               <div className="flex justify-between items-center">
-                <span className="font-bold uppercase text-neutral-500 text-[11px]">Good Value</span>
+                <span className="font-bold uppercase text-neutral-500 text-[0.6875rem]">Good Value</span>
                 <span className={`font-black ${goodValue > 0 ? 'text-emerald-600' : 'text-neutral-400'}`}>
                   {goodValue > 0 ? `${goodValue} listing${goodValue !== 1 ? 's' : ''}` : '—'}
                 </span>
               </div>
 
               <div className="flex justify-between items-center">
-                <span className="font-bold uppercase text-neutral-500 text-[11px]">Trend</span>
+                <span className="font-bold uppercase text-neutral-500 text-[0.6875rem]">Trend</span>
                 <span className={`font-black ${TREND_COLORS[trend]}`}>
                   {trend === 'up' && trendDiff !== null
                     ? `↑ R${Math.abs(trendDiff).toLocaleString('en-ZA')}`
@@ -112,7 +112,7 @@ export default function SuburbComparison({ listings, history, medians }) {
                   }}
                   title={`${Math.round((goodValue / count) * 100)}% good value`}
                 />
-                <div className="text-[10px] font-bold text-neutral-400 mt-1">
+                <div className="text-[0.625rem] font-bold text-neutral-400 mt-1">
                   {Math.round((goodValue / count) * 100)}% good value
                 </div>
               </div>

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 
 export default function AIPanel({ filteredListings, filters }) {
   const [analysis, setAnalysis] = useState('');
@@ -21,11 +21,15 @@ export default function AIPanel({ filteredListings, filters }) {
   // Typewriter effect
   useEffect(() => {
     if (!analysis) {
-      setTypewriterIndex(0);
+      Promise.resolve().then(() => {
+        setTypewriterIndex(0);
+      });
       return;
     }
 
-    setTypewriterIndex(0);
+    Promise.resolve().then(() => {
+      setTypewriterIndex(0);
+    });
     
     // speed: ~2 characters per tick to type relatively fast
     const interval = setInterval(() => {
@@ -96,7 +100,7 @@ export default function AIPanel({ filteredListings, filters }) {
         <button
           onClick={handleAnalyse}
           disabled={loading}
-          className="inline-flex items-center gap-2 border-[3px] border-ink bg-blue text-white font-extrabold uppercase px-[18px] py-[11px] text-[13px] tracking-[0.5px] cursor-pointer transition-all duration-75 hover:translate-x-[-1px] hover:translate-y-[-1px] hover:shadow-[4px_4px_0_#111111] active:translate-x-[4px] active:translate-y-[4px] active:shadow-none disabled:bg-neutral-300 disabled:text-neutral-500 disabled:cursor-not-allowed select-none shadow-[2px_2px_0_#111111]"
+          className="inline-flex items-center gap-2 border-[3px] border-ink bg-blue text-white font-extrabold uppercase px-[1.125rem] py-[0.6875rem] text-[0.8125rem] tracking-[0.5px] cursor-pointer transition-all duration-75 hover:translate-x-[-1px] hover:translate-y-[-1px] hover:shadow-[4px_4px_0_#111111] active:translate-x-[4px] active:translate-y-[4px] active:shadow-none disabled:bg-neutral-300 disabled:text-neutral-500 disabled:cursor-not-allowed select-none shadow-[2px_2px_0_#111111]"
         >
           {loading ? '⏳ Analysing...' : '✦ Generate Analysis'}
         </button>
@@ -118,16 +122,17 @@ export default function AIPanel({ filteredListings, filters }) {
         {!loading && analysis && (
           <div>
             {streamedText.split('\n\n').map((para, idx) => {
+              const paraKey = `para-${idx}-${para.substring(0, 15)}`;
               // Parse basic bold markers (**suburb**) inside typewriter
               const cleanPara = para.split('**').map((chunk, cIdx) => {
                 if (cIdx % 2 !== 0) {
-                  return <strong key={cIdx} className="font-black text-ink">{chunk}</strong>;
+                  return <strong key={`${paraKey}-bold-${cIdx}`} className="font-black text-ink">{chunk}</strong>;
                 }
                 return chunk;
               });
 
               return (
-                <p key={idx} className="mb-4 last:mb-0">
+                <p key={paraKey} className="mb-4 last:mb-0">
                   {cleanPara}
                   {idx === streamedText.split('\n\n').length - 1 && !isStreamingFinished && (
                     <span className="blinking-cursor" />
@@ -140,7 +145,7 @@ export default function AIPanel({ filteredListings, filters }) {
       </div>
 
       {generatedAt && !loading && (
-        <div className="mt-3 text-[11px] font-bold text-neutral-400 select-none">
+        <div className="mt-3 text-[0.6875rem] font-bold text-neutral-400 select-none">
           Report generated at {new Date(generatedAt).toLocaleString('en-ZA')}
         </div>
       )}

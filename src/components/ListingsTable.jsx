@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import ValueBadge from './ValueBadge';
 import { SUBURBS_LIST } from '../utils/suburbs';
 
@@ -36,6 +36,22 @@ function exportCsv(rows) {
   URL.revokeObjectURL(url);
 }
 
+function SortHdr({ field, title, sortField, sortAsc, handleSort, children }) {
+  return (
+    <th
+      onClick={() => handleSort(field)}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { handleSort(field); e.preventDefault(); } }}
+      className="px-4 py-3 cursor-pointer select-none hover:bg-neutral-800 transition-colors whitespace-nowrap focus:outline-none focus:bg-neutral-800"
+      aria-sort={sortField === field ? (sortAsc ? 'ascending' : 'descending') : 'none'}
+      role="columnheader"
+      tabIndex={0}
+      title={title}
+    >
+      {children} {sortField === field ? (sortAsc ? '▲' : '▼') : '▾'}
+    </th>
+  );
+}
+
 export default function ListingsTable({ listings, filteredListings, filters, setFilters, shortlisted, toggleShortlist, lastVisit }) {
   const [sortField, setSortField] = useState('price');
   const [sortAsc, setSortAsc] = useState(true);
@@ -62,6 +78,11 @@ export default function ListingsTable({ listings, filteredListings, filters, set
     [listings]
   );
 
+  const availableBeforeCount = useMemo(() => {
+    if (!filters.availableBefore) return 0;
+    return listings.filter(l => l.available_date && l.available_date <= filters.availableBefore).length;
+  }, [listings, filters.availableBefore]);
+
   const sortedListings = useMemo(() => [...filteredListings].sort((a, b) => {
     let valA, valB;
     switch (sortField) {
@@ -82,165 +103,177 @@ export default function ListingsTable({ listings, filteredListings, filters, set
     return 0;
   }), [filteredListings, sortField, sortAsc]);
 
-  const SortHdr = ({ field, children }) => (
-    <th
-      onClick={() => handleSort(field)}
-      className="px-4 py-3 cursor-pointer select-none hover:bg-neutral-800 transition-colors whitespace-nowrap"
-    >
-      {children} {sortField === field ? (sortAsc ? '▲' : '▼') : '▾'}
-    </th>
-  );
-
   return (
     <div className="tableview">
       {/* FILTER PANEL */}
-      <div className="border-[3px] border-ink bg-paper shadow-[6px_6px_0_#111111] p-5 mb-7 rounded-none">
-        <h2 className="inline-block bg-ink text-paper text-xs font-black uppercase tracking-wider px-2.5 py-1 mb-4">
-          Filters
-        </h2>
+      <details open className="border-[3px] border-ink bg-paper shadow-[6px_6px_0_#111111] p-5 mb-7 rounded-none group">
+        <summary className="list-none flex items-center justify-between cursor-pointer select-none focus:outline-none">
+          <h2 className="inline-block bg-ink text-paper text-xs font-black uppercase tracking-wider px-2.5 py-1 m-0">
+            Filters
+          </h2>
+          <span className="font-extrabold text-xs text-ink group-open:before:content-['▲_'] before:content-['▼_'] select-none">
+            Toggle
+          </span>
+        </summary>
 
-        <div className="flex flex-wrap gap-6 items-start">
+        <div className="flex flex-wrap gap-6 items-start mt-4">
           {/* Suburb chips with inventory count */}
           <div className="flex flex-col gap-2">
-            <div className="text-[11px] font-black uppercase tracking-wider text-ink/70">Suburb</div>
+            <div className="text-[0.6875rem] font-black uppercase tracking-wider text-ink/70">Suburb</div>
             <div className="flex flex-wrap gap-2 max-w-xl">
               {SUBURBS_LIST.map(sub => {
                 const isActive = filters.suburbs.includes(sub);
                 const count = suburbCounts[sub] || 0;
                 return (
-                  <span
+                  <button
                     key={sub}
                     onClick={() => toggleSuburb(sub)}
                     className={`border-2 border-ink px-3 py-1 text-xs font-bold cursor-pointer select-none transition-colors duration-100 ${
                       isActive ? 'bg-ink text-paper' : 'bg-white text-ink hover:bg-neutral-100'
                     }`}
+                    aria-pressed={isActive}
                   >
                     {sub}
-                    <span className={`ml-1.5 text-[10px] font-black ${isActive ? 'text-paper/60' : 'text-neutral-400'}`}>
+                    <span className={`ml-1.5 text-[0.625rem] font-black ${isActive ? 'text-paper/60' : 'text-neutral-400'}`}>
                       {count}
                     </span>
-                  </span>
+                  </button>
                 );
               })}
             </div>
           </div>
 
           {/* Max Price Slider */}
-          <div className="flex flex-col gap-2">
-            <div className="text-[11px] font-black uppercase tracking-wider text-ink/70">
+          <label className="flex flex-col gap-2">
+            <span className="text-[0.6875rem] font-black uppercase tracking-wider text-ink/70">
               Max Price — <span className="font-extrabold text-sm text-blue">R{filters.maxPrice.toLocaleString('en-ZA')}</span>
-            </div>
+            </span>
             <input
               type="range" min="8000" max="80000" step="500"
               value={filters.maxPrice}
               onChange={(e) => setFilters({ ...filters, maxPrice: parseInt(e.target.value, 10) })}
               className="w-44 accent-blue cursor-pointer h-1.5 bg-neutral-200"
+              aria-label="Maximum Price"
             />
-          </div>
+          </label>
 
           {/* Bedrooms */}
           <div className="flex flex-col gap-2">
-            <div className="text-[11px] font-black uppercase tracking-wider text-ink/70">Beds</div>
+            <div className="text-[0.6875rem] font-black uppercase tracking-wider text-ink/70">Beds</div>
             <div className="flex gap-1">
               {[{ label: 'Any', value: null }, { label: '1+', value: 1 }, { label: '2+', value: 2 }, { label: '3+', value: 3 }].map(opt => (
-                <span
+                <button
                   key={opt.label}
                   onClick={() => setFilters({ ...filters, minBeds: opt.value })}
                   className={`border-2 border-ink px-3 py-1 text-xs font-bold cursor-pointer select-none transition-colors duration-100 ${
                     filters.minBeds === opt.value ? 'bg-ink text-paper' : 'bg-white text-ink hover:bg-neutral-100'
                   }`}
+                  aria-pressed={filters.minBeds === opt.value}
                 >
                   {opt.label}
-                </span>
+                </button>
               ))}
             </div>
           </div>
 
           {/* Furnished */}
           <div className="flex flex-col gap-2">
-            <div className="text-[11px] font-black uppercase tracking-wider text-ink/70">Furnished</div>
+            <div className="text-[0.6875rem] font-black uppercase tracking-wider text-ink/70">Furnished</div>
             <div className="flex gap-1">
               {[{ label: 'All', value: null }, { label: 'Furnished only', value: true }].map(opt => (
-                <span
+                <button
                   key={opt.label}
                   onClick={() => setFilters({ ...filters, furnished: opt.value })}
                   className={`border-2 border-ink px-3 py-1 text-xs font-bold cursor-pointer select-none transition-colors duration-100 ${
                     filters.furnished === opt.value ? 'bg-ink text-paper' : 'bg-white text-ink hover:bg-neutral-100'
                   }`}
+                  aria-pressed={filters.furnished === opt.value}
                 >
                   {opt.label}
-                </span>
+                </button>
               ))}
             </div>
           </div>
 
           {/* Available before date */}
           <div className="flex flex-col gap-2">
-            <div className="text-[11px] font-black uppercase tracking-wider text-ink/70">Available Before</div>
-            <input
-              type="date"
-              value={filters.availableBefore}
-              onChange={(e) => setFilters({ ...filters, availableBefore: e.target.value })}
-              className="border-2 border-ink bg-white px-2 py-1 text-xs font-bold text-ink cursor-pointer accent-blue focus:outline-none"
-            />
+            <span className="text-[0.6875rem] font-black uppercase tracking-wider text-ink/70">Available Before</span>
+            <div className="flex items-center gap-2 flex-wrap">
+              <input
+                type="date"
+                value={filters.availableBefore}
+                onChange={(e) => setFilters({ ...filters, availableBefore: e.target.value })}
+                className="border-2 border-ink bg-white px-2 py-1 text-xs font-bold text-ink cursor-pointer accent-blue focus:outline-none"
+                aria-label="Available Before Date"
+              />
+              {filters.availableBefore && (
+                <button
+                  onClick={() => setFilters({ ...filters, availableBefore: '' })}
+                  className="border-2 border-ink bg-white px-2 py-1 text-xs font-bold text-blue hover:bg-neutral-100 focus:outline-none"
+                  aria-label="Clear date filter"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
             {filters.availableBefore && (
-              <span
-                onClick={() => setFilters({ ...filters, availableBefore: '' })}
-                className="text-[10px] font-bold text-blue cursor-pointer hover:underline"
-              >
-                Clear
+              <span className="text-[0.625rem] font-extrabold text-blue">
+                {availableBeforeCount} matching listings
               </span>
             )}
           </div>
 
           {/* Toggle chips row */}
           <div className="flex flex-col gap-2">
-            <div className="text-[11px] font-black uppercase tracking-wider text-ink/70">Quick Filters</div>
+            <div className="text-[0.6875rem] font-black uppercase tracking-wider text-ink/70">Quick Filters</div>
             <div className="flex flex-wrap gap-1">
-              <span
+              <button
                 onClick={() => setFilters({ ...filters, goodValueOnly: !filters.goodValueOnly })}
                 className={`border-2 border-ink px-3 py-1 text-xs font-bold cursor-pointer select-none transition-colors duration-100 ${
                   filters.goodValueOnly ? 'bg-ink text-paper' : 'bg-white text-ink hover:bg-neutral-100'
                 }`}
+                aria-pressed={filters.goodValueOnly}
               >
                 Good value only
-              </span>
-              <span
+              </button>
+              <button
                 onClick={() => setFilters({ ...filters, priceDropOnly: !filters.priceDropOnly })}
                 className={`border-2 border-ink px-3 py-1 text-xs font-bold cursor-pointer select-none transition-colors duration-100 ${
                   filters.priceDropOnly ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-ink hover:bg-neutral-100'
                 }`}
+                aria-pressed={filters.priceDropOnly}
               >
                 ↓ Price drops
-              </span>
-              <span
+              </button>
+              <button
                 onClick={() => setFilters({ ...filters, shortlistOnly: !filters.shortlistOnly })}
                 className={`border-2 border-ink px-3 py-1 text-xs font-bold cursor-pointer select-none transition-colors duration-100 ${
                   filters.shortlistOnly ? 'bg-ink text-paper' : 'bg-white text-ink hover:bg-neutral-100'
                 }`}
+                aria-pressed={filters.shortlistOnly}
               >
                 ♥ Shortlist only
-              </span>
+              </button>
             </div>
           </div>
         </div>
-      </div>
+      </details>
 
       {/* DATA TABLE */}
       <div className="overflow-x-auto border-[3px] border-ink shadow-[6px_6px_0_#111111]">
         <table className="w-full border-collapse bg-white text-ink text-left">
           <thead>
             <tr className="bg-ink text-paper uppercase text-xs tracking-wider border-b-[3px] border-ink">
-              <SortHdr field="suburb">Suburb</SortHdr>
-              <SortHdr field="property_type">Type</SortHdr>
-              <SortHdr field="bedrooms">Beds</SortHdr>
-              <SortHdr field="price">Price</SortHdr>
-              <SortHdr field="size_m2">Size</SortHdr>
-              <SortHdr field="price_per_m2">R/m²</SortHdr>
-              <SortHdr field="value_score">Value</SortHdr>
-              <SortHdr field="available">Available</SortHdr>
-              <SortHdr field="days">Days</SortHdr>
-              <SortHdr field="agency_name">Agency</SortHdr>
+              <SortHdr field="suburb" title="Sort by suburb name" sortField={sortField} sortAsc={sortAsc} handleSort={handleSort}>Suburb</SortHdr>
+              <SortHdr field="property_type" title="Sort by property type" sortField={sortField} sortAsc={sortAsc} handleSort={handleSort}>Type</SortHdr>
+              <SortHdr field="bedrooms" title="Sort by number of bedrooms" sortField={sortField} sortAsc={sortAsc} handleSort={handleSort}>Beds</SortHdr>
+              <SortHdr field="price" title="Sort by monthly rental price" sortField={sortField} sortAsc={sortAsc} handleSort={handleSort}>Price</SortHdr>
+              <SortHdr field="size_m2" title="Sort by unit size in square meters" sortField={sortField} sortAsc={sortAsc} handleSort={handleSort}>Size</SortHdr>
+              <SortHdr field="price_per_m2" title="Sort by rental price per square meter" sortField={sortField} sortAsc={sortAsc} handleSort={handleSort}>R/m²</SortHdr>
+              <SortHdr field="value_score" title="Sort by value score (relative to suburb median)" sortField={sortField} sortAsc={sortAsc} handleSort={handleSort}>Value</SortHdr>
+              <SortHdr field="available" title="Sort by occupation date" sortField={sortField} sortAsc={sortAsc} handleSort={handleSort}>Available</SortHdr>
+              <SortHdr field="days" title="Sort by days since listing was first seen" sortField={sortField} sortAsc={sortAsc} handleSort={handleSort}>Days</SortHdr>
+              <SortHdr field="agency_name" title="Sort by real estate agency name" sortField={sortField} sortAsc={sortAsc} handleSort={handleSort}>Agency</SortHdr>
               <th className="px-4 py-3 select-none">Link</th>
             </tr>
           </thead>
@@ -267,7 +300,7 @@ export default function ListingsTable({ listings, filteredListings, filters, set
                       <span className="flex items-center gap-1.5 flex-wrap">
                         {item.suburb}
                         {isNew && (
-                          <span className="inline-block bg-yellow border border-ink text-ink text-[9px] font-black uppercase px-1.5 py-0.5 leading-none">
+                          <span className="inline-block bg-yellow border border-ink text-ink text-[0.5625rem] font-black uppercase px-1.5 py-0.5 leading-none">
                             NEW
                           </span>
                         )}
@@ -282,7 +315,7 @@ export default function ListingsTable({ listings, filteredListings, filters, set
                     <td className="px-4 py-3 border-t-2 border-ink font-black">
                       R{item.price.toLocaleString('en-ZA')}
                       {isPriceDrop && (
-                        <span className="block text-[11px] text-emerald-600 font-extrabold mt-0.5">
+                        <span className="block text-[0.6875rem] text-emerald-600 font-extrabold mt-0.5">
                           ↓ was R{item.previous_price.toLocaleString('en-ZA')}
                         </span>
                       )}
@@ -311,6 +344,7 @@ export default function ListingsTable({ listings, filteredListings, filters, set
                           onClick={() => toggleShortlist(item.url)}
                           className="text-base leading-none cursor-pointer hover:scale-110 transition-transform select-none"
                           title={shortlisted.has(item.url) ? 'Remove from shortlist' : 'Add to shortlist'}
+                          aria-label={shortlisted.has(item.url) ? 'Remove from shortlist' : 'Add to shortlist'}
                         >
                           {shortlisted.has(item.url) ? '♥' : '♡'}
                         </button>
@@ -343,6 +377,9 @@ export default function ListingsTable({ listings, filteredListings, filters, set
         >
           ↓ Export CSV
         </button>
+      </div>
+      <div className="mt-2 text-[0.625rem] text-neutral-400 font-bold select-none">
+        * "Days" indicates how many days since the listing was first detected by the scraper.
       </div>
     </div>
   );

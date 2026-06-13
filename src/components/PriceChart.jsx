@@ -1,4 +1,3 @@
-import React from 'react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
   LineChart, Line, ScatterChart, Scatter, ZAxis
@@ -20,7 +19,7 @@ const CustomTooltip = ({ active, payload, label }) => {
   if (active && payload && payload.length) {
     return (
       <div className="bg-paper border-2 border-ink p-2.5 font-bold shadow-[3px_3px_0_#111111] text-xs text-ink rounded-none">
-        <p className="border-b-2 border-ink pb-1 mb-1.5 uppercase text-[10px] text-ink/60">{label}</p>
+        <p className="border-b-2 border-ink pb-1 mb-1.5 uppercase text-[0.625rem] text-ink/60">{label}</p>
         {payload.map((p, idx) => {
           const name = p.name || p.dataKey;
           const value = typeof p.value === 'number' ? `R ${p.value.toLocaleString('en-ZA')}` : p.value;
@@ -42,7 +41,7 @@ const ScatterTooltip = ({ active, payload }) => {
     const data = payload[0].payload;
     return (
       <div className="bg-paper border-2 border-ink p-2.5 font-bold shadow-[3px_3px_0_#111111] text-xs text-ink rounded-none">
-        <p className="border-b-2 border-ink pb-1 mb-1.5 uppercase text-[10px] text-ink/60 truncate max-w-[180px]">{data.name}</p>
+        <p className="border-b-2 border-ink pb-1 mb-1.5 uppercase text-[0.625rem] text-ink/60 truncate max-w-[180px]">{data.name}</p>
         <p className="my-0.5 text-neutral-600">SUBURB: <span className="font-extrabold text-ink">{data.suburb}</span></p>
         <p className="my-0.5 text-neutral-600">SIZE: <span className="font-extrabold text-ink">{data.x} m²</span></p>
         <p className="my-0.5 text-blue">PRICE: <span className="font-black">R {data.y.toLocaleString('en-ZA')}</span></p>
@@ -139,8 +138,9 @@ export default function PriceChart({ listings, history, historyBeds, setHistoryB
           </div>
         </div>
         {chart2Data.length <= 1 ? (
-          <div className="flex items-center justify-content-center h-80 bg-neutral-50 border-2 border-dashed border-ink/30 text-neutral-400 font-bold p-4 text-center">
-            Timeline requires at least 2 historical scrapes. Add a daily Cron scheduled scrape to begin collecting metrics.
+          <div className="flex flex-col items-center justify-center h-80 bg-neutral-50 border-2 border-dashed border-ink/30 text-neutral-400 font-bold p-4 text-center">
+            <span className="mb-2">Timeline requires at least 2 historical scrapes.</span>
+            <span className="text-xs text-neutral-400 font-medium">Scrapes are currently scheduled daily. Check back tomorrow!</span>
           </div>
         ) : (
           <div className="w-full h-80">

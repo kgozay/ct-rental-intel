@@ -1,5 +1,3 @@
-import React from 'react';
-
 export default function ValueBadge({ score }) {
   if (score === null || score === undefined) return null;
 
@@ -15,7 +13,7 @@ export default function ValueBadge({ score }) {
   }
 
   return (
-    <span className={`inline-block border-2 border-ink px-[10px] py-[3px] text-[11px] font-extrabold uppercase tracking-wide rounded-none select-none ${badgeClass}`}>
+    <span className={`inline-block border-2 border-ink px-[0.625rem] py-[0.1875rem] text-[0.6875rem] font-extrabold uppercase tracking-wide rounded-none select-none ${badgeClass}`}>
       {label}
     </span>
   );

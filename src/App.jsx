@@ -1,11 +1,12 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef, Suspense, lazy } from 'react';
 import { Link } from 'react-router-dom';
 import ListingsTable from './components/ListingsTable';
-import MapView from './components/MapView';
-import PriceChart from './components/PriceChart';
-import AIPanel from './components/AIPanel';
-import SuburbComparison from './components/SuburbComparison';
 import { SUBURBS_LIST } from './utils/suburbs';
+
+const PriceChart = lazy(() => import('./components/PriceChart'));
+const MapView = lazy(() => import('./components/MapView'));
+const AIPanel = lazy(() => import('./components/AIPanel'));
+const SuburbComparison = lazy(() => import('./components/SuburbComparison'));
 
 export default function App() {
   const [listings, setListings] = useState([]);
@@ -81,7 +82,10 @@ export default function App() {
   };
 
   useEffect(() => {
-    fetchData();
+    document.title = "Dashboard | Cape Town Rental Intel";
+    Promise.resolve().then(() => {
+      fetchData();
+    });
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
   }, []);
 
@@ -185,13 +189,13 @@ export default function App() {
         <Link to="/" className="text-2xl font-black tracking-tight uppercase no-underline text-paper hover:opacity-90">
           Cape Town Rental<span className="text-yellow">.</span>Intel
         </Link>
-        <div className="flex items-center gap-5 text-[13px] font-bold">
+        <div className="flex items-center gap-5 text-[0.8125rem] font-bold">
           <Link to="/" className="opacity-70 hover:opacity-100 no-underline text-paper uppercase tracking-wider">← Home</Link>
           <span className="opacity-80">Last scrape: {formatScrapeDate(lastScraped)}</span>
           <button
             onClick={handleRefresh}
             disabled={scraping}
-            className="border-3 border-ink bg-yellow text-ink font-extrabold uppercase px-[18px] py-[11px] text-[13px] tracking-[0.5px] cursor-pointer transition-all duration-75 select-none hover:translate-x-[-1px] hover:translate-y-[-1px] hover:shadow-[4px_4px_0_#111111] active:translate-x-[4px] active:translate-y-[4px] active:shadow-none disabled:bg-neutral-300 disabled:text-neutral-500 disabled:cursor-not-allowed"
+            className="border-3 border-ink bg-yellow text-ink font-extrabold uppercase px-[1.125rem] py-[0.6875rem] text-[0.8125rem] tracking-[0.5px] cursor-pointer transition-all duration-75 select-none hover:translate-x-[-1px] hover:translate-y-[-1px] hover:shadow-[4px_4px_0_#111111] active:translate-x-[4px] active:translate-y-[4px] active:shadow-none disabled:bg-neutral-300 disabled:text-neutral-500 disabled:cursor-not-allowed"
           >
             {scraping ? '⏳ Scraping P24 (~120s)...' : '↻ Refresh Listings'}
           </button>
@@ -244,35 +248,35 @@ export default function App() {
 
       {/* KEY KPI CARDS GRID */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4.5 mb-7 select-none">
-        <div className="bg-yellow border-[3px] border-ink shadow-[4px_4px_0_#111111] p-4 rounded-none">
-          <div className="text-3xl md:text-[34px] font-black line-clamp-1 leading-none text-ink">
+        <div className="kpi-card bg-yellow border-[3px] border-ink shadow-[4px_4px_0_#111111] p-4 rounded-none">
+          <div className="text-3xl md:text-[2.125rem] font-black line-clamp-1 leading-none text-ink">
             {filteredListings.length}
           </div>
-          <div className="text-[11px] font-black uppercase tracking-wider text-ink/70 mt-1.5">
+          <div className="text-[0.6875rem] font-black uppercase tracking-wider text-ink/70 mt-1.5">
             Listings
           </div>
         </div>
-        <div className="bg-white border-[3px] border-ink shadow-[4px_4px_0_#111111] p-4 rounded-none">
-          <div className="text-3xl md:text-[34px] font-black line-clamp-1 leading-none text-ink">
+        <div className="kpi-card bg-white border-[3px] border-ink shadow-[4px_4px_0_#111111] p-4 rounded-none">
+          <div className="text-3xl md:text-[2.125rem] font-black line-clamp-1 leading-none text-ink">
             {activeSuburbsCount}
           </div>
-          <div className="text-[11px] font-black uppercase tracking-wider text-ink/70 mt-1.5">
+          <div className="text-[0.6875rem] font-black uppercase tracking-wider text-ink/70 mt-1.5">
             Suburbs
           </div>
         </div>
-        <div className="bg-white border-[3px] border-ink shadow-[4px_4px_0_#111111] p-4 rounded-none">
-          <div className="text-3xl md:text-[34px] font-black line-clamp-1 leading-none text-ink">
+        <div className="kpi-card bg-white border-[3px] border-ink shadow-[4px_4px_0_#111111] p-4 rounded-none">
+          <div className="text-3xl md:text-[2.125rem] font-black line-clamp-1 leading-none text-ink">
             {medianRate}
           </div>
-          <div className="text-[11px] font-black uppercase tracking-wider text-ink/70 mt-1.5">
+          <div className="text-[0.6875rem] font-black uppercase tracking-wider text-ink/70 mt-1.5">
             Median R/m²
           </div>
         </div>
-        <div className="bg-white border-[3px] border-ink shadow-[4px_4px_0_#111111] p-4 rounded-none">
-          <div className="text-3xl md:text-[34px] font-black line-clamp-1 leading-none text-ink">
+        <div className="kpi-card bg-white border-[3px] border-ink shadow-[4px_4px_0_#111111] p-4 rounded-none">
+          <div className="text-3xl md:text-[2.125rem] font-black line-clamp-1 leading-none text-ink">
             {shortlisted.size > 0 ? shortlisted.size : goodValueCount}
           </div>
-          <div className="text-[11px] font-black uppercase tracking-wider text-ink/70 mt-1.5">
+          <div className="text-[0.6875rem] font-black uppercase tracking-wider text-ink/70 mt-1.5">
             {shortlisted.size > 0 ? 'Shortlisted' : 'Good Value'}
           </div>
         </div>
@@ -287,45 +291,55 @@ export default function App() {
         </div>
       ) : (
         <main>
-          {activeTab === 'table' && (
-            <ListingsTable
-              listings={listings}
-              filteredListings={filteredListings}
-              filters={filters}
-              setFilters={setFilters}
-              shortlisted={shortlisted}
-              toggleShortlist={toggleShortlist}
-              lastVisit={lastVisit}
-            />
-          )}
+          <Suspense
+            fallback={
+              <div className="border-[3px] border-ink bg-white p-16 text-center shadow-[6px_6px_0_#111111]">
+                <div className="text-neutral-400 font-extrabold text-lg animate-pulse">
+                  ⏳ Loading view...
+                </div>
+              </div>
+            }
+          >
+            {activeTab === 'table' && (
+              <ListingsTable
+                listings={listings}
+                filteredListings={filteredListings}
+                filters={filters}
+                setFilters={setFilters}
+                shortlisted={shortlisted}
+                toggleShortlist={toggleShortlist}
+                lastVisit={lastVisit}
+              />
+            )}
 
-          {activeTab === 'charts' && (
-            <PriceChart
-              listings={filteredListings}
-              history={history}
-              historyBeds={historyBeds}
-              setHistoryBeds={setHistoryBeds}
-            />
-          )}
+            {activeTab === 'charts' && (
+              <PriceChart
+                listings={filteredListings}
+                history={history}
+                historyBeds={historyBeds}
+                setHistoryBeds={setHistoryBeds}
+              />
+            )}
 
-          {activeTab === 'map' && (
-            <MapView listings={filteredListings} />
-          )}
+            {activeTab === 'map' && (
+              <MapView listings={filteredListings} />
+            )}
 
-          {activeTab === 'compare' && (
-            <SuburbComparison
-              listings={listings}
-              history={history}
-              medians={medians}
-            />
-          )}
+            {activeTab === 'compare' && (
+              <SuburbComparison
+                listings={listings}
+                history={history}
+                medians={medians}
+              />
+            )}
 
-          {activeTab === 'ai' && (
-            <AIPanel
-              filteredListings={filteredListings}
-              filters={filters}
-            />
-          )}
+            {activeTab === 'ai' && (
+              <AIPanel
+                filteredListings={filteredListings}
+                filters={filters}
+              />
+            )}
+          </Suspense>
         </main>
       )}
     </div>

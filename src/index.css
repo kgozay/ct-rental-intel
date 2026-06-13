@@ -90,3 +90,152 @@ body {
   vertical-align: -3px;
   margin-left: 3px;
 }
+
+/* Table performance optimization */
+tbody tr {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 52px;
+}
+
+/* Table scroll indicator hints (double shadows on overflow) */
+.overflow-x-auto {
+  background:
+    linear-gradient(to right, #ffffff 30%, rgba(255, 255, 255, 0)),
+    linear-gradient(to right, rgba(255, 255, 255, 0), #ffffff 70%) 100% 0,
+    radial-gradient(farthest-side at 0% 50%, rgba(0, 0, 0, 0.2), rgba(0, 0, 0, 0)),
+    radial-gradient(farthest-side at 100% 50%, rgba(0, 0, 0, 0.2), rgba(0, 0, 0, 0)) 100% 0;
+  background-repeat: no-repeat;
+  background-size: 40px 100%, 40px 100%, 14px 100%, 14px 100%;
+  background-attachment: local, local, scroll, scroll;
+}
+
+/* KPI Card Animations */
+@keyframes slide-in {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.kpi-card {
+  animation: slide-in 0.6s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+@supports (animation-timeline: view()) {
+  .kpi-card {
+    animation: slide-in linear both;
+    animation-timeline: view();
+    animation-range: entry 0% entry 30%;
+  }
+}
+
+/* Native Dark Mode support */
+@media (prefers-color-scheme: dark) {
+  body {
+    background-color: #121212;
+    background-image: radial-gradient(#2d2d2d 1px, transparent 1px);
+  }
+  
+  .bg-paper {
+    background-color: #1a1a1a !important;
+  }
+  
+  .bg-white {
+    background-color: #1e1e1e !important;
+    color: #FAF6E9 !important;
+  }
+  
+  .text-ink {
+    color: #FAF6E9 !important;
+  }
+  
+  .text-ink\/70 {
+    color: rgba(250, 246, 233, 0.7) !important;
+  }
+  
+  .text-ink\/80 {
+    color: rgba(250, 246, 233, 0.8) !important;
+  }
+  
+  .border-ink,
+  .border-2,
+  .border-\[3px\],
+  .border-t-2 {
+    border-color: #FAF6E9 !important;
+  }
+  
+  .shadow-\[6px_6px_0_\#111111\] {
+    box-shadow: 6px 6px 0 #FAF6E9 !important;
+  }
+  
+  .shadow-\[4px_4px_0_\#111111\] {
+    box-shadow: 4px 4px 0 #FAF6E9 !important;
+  }
+  
+  .shadow-\[3px_3px_0_\#111111\] {
+    box-shadow: 3px 3px 0 #FAF6E9 !important;
+  }
+  
+  .shadow-\[2px_2px_0_\#111111\] {
+    box-shadow: 2px 2px 0 #FAF6E9 !important;
+  }
+  
+  /* Tables */
+  thead tr {
+    background-color: #FAF6E9 !important;
+    color: #111111 !important;
+  }
+  
+  tbody tr {
+    background-color: #1e1e1e !important;
+    color: #FAF6E9 !important;
+  }
+  
+  tbody tr:hover {
+    background-color: #2a2a2a !important;
+  }
+  
+  .overflow-x-auto {
+    background:
+      linear-gradient(to right, #1e1e1e 30%, rgba(30, 30, 30, 0)),
+      linear-gradient(to right, rgba(30, 30, 30, 0), #1e1e1e 70%) 100% 0,
+      radial-gradient(farthest-side at 0% 50%, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0)),
+      radial-gradient(farthest-side at 100% 50%, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0)) 100% 0;
+    background-repeat: no-repeat;
+    background-size: 40px 100%, 40px 100%, 14px 100%, 14px 100%;
+    background-attachment: local, local, scroll, scroll;
+  }
+  
+  /* Buttons */
+  button.bg-paper {
+    background-color: #1e1e1e !important;
+    color: #FAF6E9 !important;
+  }
+  button.bg-paper:hover {
+    background-color: #2d2d2d !important;
+  }
+  
+  /* Recharts custom tooltip */
+  .bg-paper.border-2.border-ink {
+    background-color: #1e1e1e !important;
+    border-color: #FAF6E9 !important;
+    box-shadow: 3px 3px 0 #FAF6E9 !important;
+    color: #FAF6E9 !important;
+  }
+  
+  /* Blinking cursor in dark mode */
+  .blinking-cursor {
+    background-color: #FAF6E9 !important;
+  }
+  
+  /* Leaflet popup overrides for dark mode */
+  .leaflet-popup-content-wrapper {
+    background-color: #1e1e1e !important;
+    border-color: #FAF6E9 !important;
+    box-shadow: 4px 4px 0 #FAF6E9 !important;
+  }
+  
+  .leaflet-popup-tip {
+    background: #FAF6E9 !important;
+  }
+  
+  .leaflet-popup-close-button {
+    color: #FAF6E9 !important;
+  }
+}

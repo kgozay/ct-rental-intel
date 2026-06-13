@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { SUBURBS_LIST } from '../utils/suburbs';
 
@@ -39,6 +39,7 @@ export default function Landing() {
   const [stats, setStats] = useState(null);
 
   useEffect(() => {
+    document.title = "Cape Town Rental Intelligence — Neo-Brutalist Property Dashboard";
     let cancelled = false;
     fetch('/api/listings?latestOnly=true')
       .then(r => (r.ok ? r.json() : null))
@@ -83,7 +84,7 @@ export default function Landing() {
 
       {/* HERO */}
       <header className="mb-16">
-        <div className="fade-up inline-block border-[3px] border-ink bg-yellow px-3 py-1 text-[11px] font-black uppercase tracking-[1px] shadow-[3px_3px_0_#111111] mb-6">
+        <div className="fade-up inline-block border-[3px] border-ink bg-yellow px-3 py-1 text-[0.6875rem] font-black uppercase tracking-[1px] shadow-[3px_3px_0_#111111] mb-6">
           Cape Town · Atlantic Seaboard · City Bowl · Southern Suburbs
         </div>
         <h1
@@ -125,10 +126,10 @@ export default function Landing() {
             className={`fade-up border-[3px] border-ink shadow-[4px_4px_0_#111111] p-5 ${s.accent ? 'bg-yellow' : 'bg-white'}`}
             style={{ animationDelay: `${300 + i * 70}ms` }}
           >
-            <div className="text-3xl md:text-[38px] font-black leading-none text-ink line-clamp-1">
+            <div className="text-3xl md:text-[2.375rem] font-black leading-none text-ink line-clamp-1">
               {s.num}
             </div>
-            <div className="text-[11px] font-black uppercase tracking-wider text-ink/70 mt-2">
+            <div className="text-[0.6875rem] font-black uppercase tracking-wider text-ink/70 mt-2">
               {s.lbl}
             </div>
           </div>
@@ -150,7 +151,7 @@ export default function Landing() {
                 {f.tag}
               </span>
               <h3 className="text-xl font-black uppercase tracking-tight mb-2">{f.title}</h3>
-              <p className="text-[15px] font-medium leading-relaxed text-ink/80">{f.body}</p>
+              <p className="text-[0.9375rem] font-medium leading-relaxed text-ink/80">{f.body}</p>
             </div>
           ))}
         </div>
