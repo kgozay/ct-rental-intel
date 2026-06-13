@@ -1,122 +1,82 @@
 import React, { useEffect, useRef } from 'react';
-import mapboxgl from 'mapbox-gl';
-import 'mapbox-gl/dist/mapbox-gl.css';
-
-// Set public token from environment variables
-mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_PUBLIC_TOKEN;
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
 
 export default function MapView({ listings }) {
   const mapContainer = useRef(null);
-  const map = useRef(null);
+  const mapRef = useRef(null);
+  const markersLayer = useRef(L.layerGroup());
 
-  // 1. Convert filtered listings to GeoJSON FeatureCollection
-  const getGeoJSON = (items) => {
-    const features = items
-      .filter(item => item.lat && item.lng && !isNaN(item.lat) && !isNaN(item.lng))
-      .map(item => {
-        // Enforce bounds checks for Cape Town
-        return {
-          type: 'Feature',
-          geometry: {
-            type: 'Point',
-            coordinates: [parseFloat(item.lng), parseFloat(item.lat)] // Mapbox requires [lng, lat]
-          },
-          properties: {
-            id: item.id,
-            address: item.address || item.suburb,
-            price: item.price,
-            price_text: `R ${item.price.toLocaleString('en-ZA')}`,
-            bedrooms: item.bedrooms,
-            size_m2: item.size_m2,
-            price_per_m2: item.price_per_m2,
-            value_score: item.value_score,
-            url: item.url,
-            suburb: item.suburb,
-            geocode_precise: item.geocode_precise ? 1 : 0
-          }
-        };
-      });
-
-    return {
-      type: 'FeatureCollection',
-      features
-    };
-  };
-
-  // 2. Initialise Mapbox Map instance
+  // 1. Initialise Leaflet Map
   useEffect(() => {
-    if (map.current || !mapContainer.current) return;
+    if (mapRef.current || !mapContainer.current) return;
 
-    map.current = new mapboxgl.Map({
-      container: mapContainer.current,
-      style: 'mapbox://styles/mapbox/light-v11',
-      center: [18.4241, -33.9249], // CBD [lng, lat]
-      zoom: 11.8 // Fitting Woodstock to Sea Point & Claremont
+    // Create Leaflet map: center at [-33.9249, 18.4241] (Cape Town CBD), zoom 12
+    const map = L.map(mapContainer.current, {
+      center: [-33.9249, 18.4241], // Leaflet uses [lat, lng]
+      zoom: 12,
+      zoomControl: false // Position zoom control manually
     });
 
-    const m = map.current;
+    mapRef.current = map;
 
-    // Add navigation controls
-    m.addControl(new mapboxgl.NavigationControl({ showCompass: false }), 'top-right');
+    // Add standard Zoom control in top-right
+    L.control.zoom({ position: 'topright' }).addTo(map);
 
-    m.on('load', () => {
-      // Add data source
-      m.addSource('listings', {
-        type: 'geojson',
-        data: getGeoJSON(listings)
-      });
+    // Add CartoDB Voyager Tile Layer (High contrast, beautiful, completely free)
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+      subdomains: 'abcd',
+      maxZoom: 20
+    }).addTo(map);
 
-      // Add circle layer
-      m.addLayer({
-        id: 'listings-layer',
-        type: 'circle',
-        source: 'listings',
-        paint: {
-          // Circle color by price
-          'circle-color': [
-            'step',
-            ['get', 'price'],
-            '#10b981', // <= R15k (Green)
-            15001, '#f59e0b', // R15k - R22k (Amber)
-            22001, '#f97316', // R22k - R35k (Orange)
-            35001, '#ef4444'  // > R35k (Red)
-          ],
-          'circle-radius': [
-            'interpolate',
-            ['linear'],
-            ['zoom'],
-            10, 6,
-            15, 12
-          ],
-          'circle-stroke-width': 2,
-          'circle-stroke-color': '#111111',
-          // Opacity: 0.7 for precise geocode, 0.3 for approximate
-          'circle-opacity': [
-            'case',
-            ['==', ['get', 'geocode_precise'], 1], 0.7,
-            0.3
-          ]
+    // Add the markers layer group to the map
+    markersLayer.current.addTo(map);
+
+    return () => {
+      if (mapRef.current) {
+        mapRef.current.remove();
+        mapRef.current = null;
+      }
+    };
+  }, []);
+
+  // 2. Redraw markers whenever listings array updates
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    // Clear existing pins
+    markersLayer.current.clearLayers();
+
+    // Plot listings as CircleMarkers
+    listings
+      .filter(item => item.lat && item.lng && !isNaN(item.lat) && !isNaN(item.lng))
+      .forEach(item => {
+        // Price color bands
+        let color = '#10b981'; // <= R15k (Green)
+        if (item.price > 35000) {
+          color = '#ef4444'; // > R35k (Red)
+        } else if (item.price > 22000) {
+          color = '#f97316'; // R22k - R35k (Orange)
+        } else if (item.price > 15000) {
+          color = '#f59e0b'; // R15k - R22k (Amber)
         }
-      });
 
-      // 3. Click popup handler
-      m.on('click', 'listings-layer', (e) => {
-        const feature = e.features[0];
-        const coordinates = feature.geometry.coordinates.slice();
-        const p = feature.properties;
+        // Opacity: 0.7 for precise geocodes, 0.3 for approximate centroids
+        const opacity = item.geocode_precise ? 0.7 : 0.3;
 
-        // Construct HTML for ValueBadge inside popup
+        // Custom Value Badge HTML inside popup
         let valueBadgeHtml = '';
-        if (p.value_score !== null && p.value_score !== undefined && p.value_score !== 'null') {
-          const score = parseFloat(p.value_score);
+        if (item.value_score !== null && item.value_score !== undefined) {
           let label = 'Fair';
           let bg = '#E5E1D4'; // bgrey
           let fg = '#111111';
           
-          if (score > 1.15) {
+          if (item.value_score > 1.15) {
             label = 'Good value';
             bg = '#A3E635'; // lime
-          } else if (score < 0.85) {
+          } else if (item.value_score < 0.85) {
             label = 'Expensive';
             bg = '#FF5436'; // bred
             fg = '#ffffff';
@@ -131,70 +91,55 @@ export default function MapView({ listings }) {
           `;
         }
 
-        // Popup HTML structure
-        const html = `
+        // Neo-Brutalist Popup HTML Template
+        const popupHtml = `
           <div style="font-family: 'Helvetica Neue', Arial, sans-serif; padding: 2px; color: #111;">
-            <b style="font-size: 13px; text-transform: uppercase; display: block; border-bottom: 2px solid #111; padding-bottom: 4px; margin-bottom: 6px;">${p.address}</b>
+            <b style="font-size: 13px; text-transform: uppercase; display: block; border-bottom: 2px solid #111; padding-bottom: 4px; margin-bottom: 6px;">${item.address || item.suburb}</b>
             <div style="font-size: 11px; font-weight: bold; margin-bottom: 4px;">
-              ${p.bedrooms && p.bedrooms !== 'null' ? p.bedrooms + ' bed' : 'Room/Studio'} 
-              ${p.size_m2 && p.size_m2 !== 'null' ? '· ' + p.size_m2 + 'm²' : ''} 
-              <span style="opacity: 0.6; font-size: 9px;">(${p.suburb})</span>
+              ${item.bedrooms ? item.bedrooms + ' bed' : 'Room/Studio'} 
+              ${item.size_m2 ? '· ' + item.size_m2 + 'm²' : ''} 
+              <span style="opacity: 0.6; font-size: 9px;">(${item.suburb})</span>
             </div>
             <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 6px;">
-              <span style="font-weight: 900; font-size: 14px; color: #111;">${p.price_text}</span>
-              <span style="font-size: 10px; font-weight: 800; opacity: 0.7;">${p.price_per_m2 && p.price_per_m2 !== 'null' ? p.price_per_m2 + ' R/m²' : ''}</span>
+              <span style="font-weight: 900; font-size: 14px; color: #111;">R ${item.price.toLocaleString('en-ZA')}</span>
+              <span style="font-size: 10px; font-weight: 800; opacity: 0.7;">${item.price_per_m2 ? item.price_per_m2 + ' R/m²' : ''}</span>
             </div>
             ${valueBadgeHtml}
             <div style="margin-top: 10px;">
-              <a href="${p.url}" target="_blank" style="display: block; text-align: center; border: 2px solid #111; background: #FFD23F; padding: 4px; font-size: 11px; font-weight: 900; text-decoration: none; color: #111; box-shadow: 2px 2px 0 #111;">
+              <a href="${item.url}" target="_blank" style="display: block; text-align: center; border: 2px solid #111; background: #FFD23F; padding: 4px; font-size: 11px; font-weight: 900; text-decoration: none; color: #111; box-shadow: 2px 2px 0 #111;">
                 VIEW LISTING ↗
               </a>
             </div>
           </div>
         `;
 
-        // Ensure popup is placed correctly
-        while (Math.abs(e.lngLat.lng - coordinates[0]) > 180) {
-          coordinates[0] += e.lngLat.lng > coordinates[0] ? 360 : -360;
-        }
+        // Create Leaflet circleMarker
+        const marker = L.circleMarker([parseFloat(item.lat), parseFloat(item.lng)], {
+          radius: 8,
+          fillColor: color,
+          color: '#111111', // ink outline
+          weight: 2,
+          fillOpacity: opacity,
+          opacity: 1.0
+        });
 
-        new mapboxgl.Popup()
-          .setLngLat(coordinates)
-          .setHTML(html)
-          .addTo(m);
+        // Bind popup and add to layer group
+        marker.bindPopup(popupHtml, {
+          closeButton: true,
+          offset: L.point(0, -6)
+        });
+        
+        marker.addTo(markersLayer.current);
       });
-
-      // Change cursor on hover
-      m.on('mouseenter', 'listings-layer', () => {
-        m.getCanvas().style.cursor = 'pointer';
-      });
-      m.on('mouseleave', 'listings-layer', () => {
-        m.getCanvas().style.cursor = '';
-      });
-    });
-
-    return () => {
-      if (map.current) {
-        map.current.remove();
-        map.current = null;
-      }
-    };
-  }, []);
-
-  // 4. Update map source when listings change
-  useEffect(() => {
-    if (map.current && map.current.isStyleLoaded() && map.current.getSource('listings')) {
-      map.current.getSource('listings').setData(getGeoJSON(listings));
-    }
   }, [listings]);
 
   return (
-    <div className="relative border-[3px] border-ink bg-neutral-100 shadow-[6px_6px_0_#111111] mb-7 h-[450px]">
+    <div className="relative border-[3px] border-ink bg-neutral-100 shadow-[6px_6px_0_#111111] mb-7 h-[450px] z-0">
       {/* Map Element */}
       <div ref={mapContainer} className="w-full h-full" />
 
       {/* Brutalist Legend */}
-      <div className="absolute left-4 bottom-4 bg-white border-[3px] border-ink p-3 shadow-[4px_4px_0_#111111] text-xs font-bold z-10 rounded-none max-w-[160px] select-none pointer-events-auto">
+      <div className="absolute left-4 bottom-4 bg-white border-[3px] border-ink p-3 shadow-[4px_4px_0_#111111] text-xs font-bold z-[1000] rounded-none max-w-[160px] select-none pointer-events-auto">
         <div className="font-extrabold uppercase tracking-wide border-b-2 border-ink pb-1 mb-2">Price Band</div>
         <div className="flex flex-col gap-1.5">
           <div className="flex items-center gap-2">

@@ -185,6 +185,9 @@ module.exports = async function handler(req, res) {
 
     // Geocode listings
     const processedListings = [];
+    let nominatimQueryCount = 0;
+    const MAX_NOMINATIM_QUERIES = 20;
+
     for (const listing of normalisedListings) {
       const cached = cachedCoordsMap[listing.url];
       
@@ -194,32 +197,40 @@ module.exports = async function handler(req, res) {
         listing.lng = cached.lng;
         listing.geocode_precise = cached.geocode_precise;
       } else {
-        // Cache miss: geocode using Mapbox API
+        // Cache miss: geocode using OpenStreetMap Nominatim API
         let lat = listing.suburbCentroid.lat;
         let lng = listing.suburbCentroid.lng;
         let geocode_precise = false;
         
-        if (MAPBOX_SECRET && listing.address && /^\d+/.test(listing.address)) {
+        const hasNumberAddress = listing.address && /^\d+/.test(listing.address);
+        
+        if (hasNumberAddress && nominatimQueryCount < MAX_NOMINATIM_QUERIES) {
           try {
-            // Sequential delay of 100ms to throttle requests
-            await sleep(100);
+            nominatimQueryCount++;
+            console.log(`[OSM Geocode ${nominatimQueryCount}/${MAX_NOMINATIM_QUERIES}] Resolving: ${listing.address}`);
             
-            const geocodeUrl = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(listing.address + ', Cape Town, South Africa')}.json?country=ZA&limit=1&access_token=${MAPBOX_SECRET}`;
-            const response = await fetch(geocodeUrl);
+            // Respect Nominatim's strict usage policy: sleep 1 second (1000ms) between calls
+            await sleep(1000);
+            
+            const geocodeUrl = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(listing.address + ', Cape Town, South Africa')}&format=json&limit=1`;
+            const response = await fetch(geocodeUrl, {
+              headers: { 'User-Agent': 'CapeTownRentalIntel/1.0 (contact@example.com)' }
+            });
             
             if (response.ok) {
               const data = await response.json();
-              if (data.features && data.features.length > 0) {
-                const center = data.features[0].center; // [longitude, latitude]
-                lng = center[0];
-                lat = center[1];
+              if (data && data.length > 0) {
+                lat = parseFloat(data[0].lat);
+                lng = parseFloat(data[0].lon);
                 geocode_precise = true;
+              } else {
+                console.warn(`Nominatim geocode returned no results for: ${listing.address}`);
               }
             } else {
-              console.warn(`Mapbox geocode failed for ${listing.address}: ${response.statusText}`);
+              console.warn(`Nominatim API returned error: ${response.statusText}`);
             }
           } catch (err) {
-            console.error(`Error geocoding address "${listing.address}":`, err.message);
+            console.error(`Error querying Nominatim for "${listing.address}":`, err.message);
           }
         }
         
