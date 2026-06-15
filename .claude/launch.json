@@ -5,6 +5,7 @@
       "name": "ct-rental-intel",
       "runtimeExecutable": "npx",
       "runtimeArgs": ["vercel", "dev", "--listen", "3001"],
+      "cwd": "/Users/kgosi/Desktop/Claude code/Rental intelligence tool/ct-rental-intel",
       "port": 3001
     }
   ]

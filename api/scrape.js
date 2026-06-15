@@ -1,10 +1,8 @@
 const { sql } = require('./db');
 const { SUBURBS } = require('./suburbs');
 
-// Cooldown between billable scrapes. Manual refreshes inside this window return
-// cached data instead of spending Apify credits. The Vercel cron (daily at 5am)
-// bypasses it with ?force=true. Set to 20h so daily cron always runs with headroom.
-const COOLDOWN_HOURS = 20;
+// Manual-only cooldown — prevents re-scraping more than once per day.
+const COOLDOWN_HOURS = 24;
 
 // Enrichment roughly doubles the per-listing Apify cost (listing + enrichment events).
 // Toggle off via APIFY_ENRICH=false once we confirm floor_area survives without it.
@@ -28,7 +26,7 @@ function resolveBaseUrl(req) {
  * in api/ingest.js, which keeps every function call well under 60s.
  */
 module.exports = async function handler(req, res) {
-  // Allow POST (manual refresh) and GET (Vercel cron with ?force=true).
+  // Only allow POST (manual refresh).
   const isCron = req.method === 'GET' && req.query.force === 'true';
   if (req.method !== 'POST' && !isCron) {
     res.setHeader('Allow', ['POST']);

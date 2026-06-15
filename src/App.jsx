@@ -126,7 +126,7 @@ export default function App() {
           : null;
         setNotice({
           type: 'info',
-          text: `Listings are still fresh — a new scrape is skipped to save credits.${nextText ? ` Next refresh available ${nextText}.` : ''}`
+          text: `Data is still fresh — you can refresh once per day to save credits.${nextText ? ` Next refresh available ${nextText}.` : ''}`
         });
         setScraping(false);
       } else if (response.ok && data.started) {

@@ -282,7 +282,7 @@ export default function Landing() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-start">
           <div>
             <p className="text-base font-medium leading-relaxed text-ink/80 mb-4">
-              Every 3 days, the scraper pulls all residential rentals from Property24 across
+              On demand (up to once a day), the scraper pulls all residential rentals from Property24 across
               the 7 tracked suburbs. Each listing is cleaned, deduplicated, and scored for
               value against the suburb's median price per m².
             </p>
@@ -296,7 +296,7 @@ export default function Landing() {
               <span className="font-black text-blue text-xl leading-none mt-0.5 select-none">1</span>
               <div>
                 <div className="font-black text-sm uppercase tracking-tight mb-0.5">Scrape Property24</div>
-                <div className="text-xs font-medium text-ink/60 leading-relaxed">Residential rentals across all 7 suburbs, pulled every 3 days</div>
+                <div className="text-xs font-medium text-ink/60 leading-relaxed">Residential rentals across all 7 suburbs, refreshed once a day on demand</div>
               </div>
             </div>
             <div className="flex items-start gap-4 border-[3px] border-ink bg-white p-4 shadow-[3px_3px_0_#111111]">
@@ -323,7 +323,7 @@ export default function Landing() {
           Ready to find your<span className="text-yellow"> next place?</span>
         </h2>
         <p className="text-paper/70 font-medium mb-8 max-w-[520px] mx-auto">
-          Jump into the live dashboard. Data refreshes automatically every few days.
+          Jump into the live dashboard. Data refreshes on demand — up to once a day.
         </p>
         <Link
           to="/dashboard"

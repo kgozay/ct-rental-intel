@@ -4,9 +4,6 @@
       "maxDuration": 60
     }
   },
-  "crons": [
-    { "path": "/api/scrape?force=true", "schedule": "0 5 * * *" }
-  ],
   "rewrites": [
     { "source": "/((?!api/|assets/|src/|node_modules/|@|.*\\.).*)", "destination": "/index.html" }
   ],
