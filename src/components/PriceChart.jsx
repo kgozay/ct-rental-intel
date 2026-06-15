@@ -15,7 +15,7 @@ const SUBURB_COLORS = {
 };
 
 // 1. Custom Brutalist Tooltip
-const CustomTooltip = ({ active, payload, label }) => {
+const CustomTooltip = ({ active, payload, label, hint }) => {
   if (active && payload && payload.length) {
     return (
       <div className="bg-paper border-2 border-ink p-2.5 font-bold shadow-[3px_3px_0_#111111] text-xs text-ink rounded-none">
@@ -29,6 +29,11 @@ const CustomTooltip = ({ active, payload, label }) => {
             </p>
           );
         })}
+        {hint && (
+          <p className="mt-1.5 pt-1 border-t border-ink/20 text-[0.625rem] font-black text-ink/50 uppercase tracking-wide">
+            {hint}
+          </p>
+        )}
       </div>
     );
   }
@@ -54,7 +59,7 @@ const ScatterTooltip = ({ active, payload }) => {
   return null;
 };
 
-export default function PriceChart({ listings, history, historyBeds, setHistoryBeds }) {
+export default function PriceChart({ listings, history, historyBeds, setHistoryBeds, onDrillDown }) {
   // --- CHART 1: MEDIAN BY SUBURB & BED COUNT ---
   const bedCounts = [1, 2, 3];
   const chart1Data = bedCounts.map(beds => {
@@ -107,10 +112,28 @@ export default function PriceChart({ listings, history, historyBeds, setHistoryB
               <CartesianGrid strokeDasharray="3 3" stroke="#e5e5e5" />
               <XAxis dataKey="beds" tick={{ fill: '#111111', fontWeight: 'bold' }} stroke="#111111" />
               <YAxis tickFormatter={(val) => `R ${val/1000}k`} tick={{ fill: '#111111', fontWeight: 'bold' }} stroke="#111111" />
-              <Tooltip content={<CustomTooltip />} />
+              <Tooltip content={(props) => (
+                <CustomTooltip
+                  {...props}
+                  hint={onDrillDown ? '↗ Click bar to filter table' : undefined}
+                />
+              )} />
               <Legend wrapperStyle={{ fontWeight: 'bold', textTransform: 'uppercase', fontSize: '11px', paddingTop: '10px' }} />
               {SUBURBS_LIST.map(sub => (
-                <Bar key={sub} dataKey={sub} fill={SUBURB_COLORS[sub]} stroke="#111111" strokeWidth={1.5} />
+                <Bar
+                  key={sub}
+                  dataKey={sub}
+                  fill={SUBURB_COLORS[sub]}
+                  stroke="#111111"
+                  strokeWidth={1.5}
+                  cursor={onDrillDown ? 'pointer' : 'default'}
+                  onClick={(data) => {
+                    if (onDrillDown && data[sub] !== undefined) {
+                      const bedNum = parseInt(data.beds, 10);
+                      onDrillDown(sub, bedNum);
+                    }
+                  }}
+                />
               ))}
             </BarChart>
           </ResponsiveContainer>
@@ -139,8 +162,12 @@ export default function PriceChart({ listings, history, historyBeds, setHistoryB
         </div>
         {chart2Data.length <= 1 ? (
           <div className="flex flex-col items-center justify-center h-80 bg-neutral-50 border-2 border-dashed border-ink/30 text-neutral-400 font-bold p-4 text-center">
-            <span className="mb-2">Timeline requires at least 2 historical scrapes.</span>
-            <span className="text-xs text-neutral-400 font-medium">Scrapes are currently scheduled daily. Check back tomorrow!</span>
+            <span className="mb-2 font-black text-ink text-sm">Not enough data for trends yet</span>
+            <span className="text-xs text-neutral-400 font-medium max-w-xs">
+              {chart2Data.length === 1
+                ? 'One scrape done — scrape again in 24h+ to unlock the trend line.'
+                : 'Run the first scrape with ↻ Refresh Listings to start collecting data.'}
+            </span>
           </div>
         ) : (
           <div className="w-full h-80">
@@ -182,7 +209,7 @@ export default function PriceChart({ listings, history, historyBeds, setHistoryB
               <ZAxis type="category" dataKey="name" name="Name" />
               <Tooltip content={<ScatterTooltip />} cursor={{ strokeDasharray: '3 3', stroke: '#111' }} />
               <Legend wrapperStyle={{ fontWeight: 'bold', textTransform: 'uppercase', fontSize: '11px', paddingTop: '10px' }} />
-              {SUBURBS_LIST.map(sub => (
+              {SUBURBS_LIST.filter(sub => scatterData[sub].length > 0).map(sub => (
                 <Scatter
                   key={sub}
                   name={sub}

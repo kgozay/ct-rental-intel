@@ -63,7 +63,7 @@ function SortHdr({ field, title, sortField, sortAsc, handleSort, children }) {
   );
 }
 
-export default function ListingsTable({ listings, filteredListings, filters, setFilters, shortlisted, toggleShortlist, lastVisit }) {
+export default function ListingsTable({ listings, filteredListings, filters, setFilters, shortlisted, toggleShortlist, lastVisit, onSelectListing, selectedListingUrl }) {
   const [sortField, setSortField] = useState('price');
   const [sortAsc, setSortAsc] = useState(true);
 
@@ -272,7 +272,7 @@ export default function ListingsTable({ listings, filteredListings, filters, set
               <button
                 onClick={() => setFilters({ ...filters, priceDropOnly: !filters.priceDropOnly })}
                 className={`border-2 border-ink px-3 py-1 text-xs font-bold cursor-pointer select-none transition-colors duration-100 ${
-                  filters.priceDropOnly ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-ink hover:bg-neutral-100'
+                  filters.priceDropOnly ? 'bg-blue text-white border-blue' : 'bg-white text-ink hover:bg-neutral-100'
                 }`}
                 aria-pressed={filters.priceDropOnly}
               >
@@ -366,8 +366,9 @@ export default function ListingsTable({ listings, filteredListings, filters, set
                 return (
                   <tr
                     key={item.id || item.url}
-                    className={`stagger-row hover:bg-neutral-50 ${isPriceDrop ? 'border-l-4 border-l-emerald-500' : ''}`}
+                    className={`stagger-row ${onSelectListing ? 'cursor-pointer' : ''} ${item.url === selectedListingUrl ? 'bg-yellow border-l-[4px] border-l-blue' : isPriceDrop ? 'hover:bg-neutral-50 border-l-[4px] border-l-lime' : 'hover:bg-neutral-50'}`}
                     style={{ animationDelay: `${idx * 40}ms` }}
+                    onClick={() => onSelectListing?.(item)}
                   >
                     <td className="px-4 py-3 border-t-2 border-ink font-bold text-xs uppercase">
                       <span className="flex items-center gap-1.5 flex-wrap">
@@ -388,7 +389,7 @@ export default function ListingsTable({ listings, filteredListings, filters, set
                     <td className="px-4 py-3 border-t-2 border-ink font-black">
                       R{item.price.toLocaleString('en-ZA')}
                       {isPriceDrop && (
-                        <span className="block text-[0.6875rem] text-emerald-600 font-extrabold mt-0.5">
+                        <span className="block text-[0.6875rem] text-blue font-extrabold mt-0.5">
                           ↓ was R{item.previous_price.toLocaleString('en-ZA')}
                         </span>
                       )}
@@ -411,7 +412,7 @@ export default function ListingsTable({ listings, filteredListings, filters, set
                     <td className="px-4 py-3 border-t-2 border-ink text-xs truncate max-w-xs font-semibold">
                       {item.agency_name || '—'}
                     </td>
-                    <td className="px-4 py-3 border-t-2 border-ink">
+                    <td className="px-4 py-3 border-t-2 border-ink" onClick={(e) => e.stopPropagation()}>
                       <div className="flex items-center gap-1.5">
                         <button
                           onClick={() => toggleShortlist(item.url)}

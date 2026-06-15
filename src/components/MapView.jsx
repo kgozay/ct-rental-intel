@@ -8,7 +8,7 @@ const esc = (s) => String(s ?? '')
   .replace(/"/g, '&quot;')
   .replace(/'/g, '&#39;');
 
-export default function MapView({ listings }) {
+export default function MapView({ listings, onFilterSuburb }) {
   const mapContainer = useRef(null);
   const mapRef = useRef(null);
   const markersLayer = useRef(L.layerGroup());
@@ -51,6 +51,12 @@ export default function MapView({ listings }) {
       }
     };
   }, []);
+
+  // Keep window callback in sync so popup buttons can call it
+  useEffect(() => {
+    window._ctRentalFilterSuburb = onFilterSuburb || null;
+    return () => { window._ctRentalFilterSuburb = null; };
+  }, [onFilterSuburb]);
 
   // 2. Redraw markers whenever listings array updates
   useEffect(() => {
@@ -116,10 +122,13 @@ export default function MapView({ listings }) {
               <span style="font-size: 10px; font-weight: 800; opacity: 0.7;">${item.price_per_m2 ? esc(item.price_per_m2) + ' R/m²' : ''}</span>
             </div>
             ${valueBadgeHtml}
-            <div style="margin-top: 10px;">
+            <div style="margin-top: 10px; display: flex; flex-direction: column; gap: 6px;">
               <a href="${/^https?:\/\//i.test(item.url || '') ? esc(item.url) : '#'}" target="_blank" rel="noopener noreferrer" style="display: block; text-align: center; border: 2px solid #111; background: #FFD23F; padding: 4px; font-size: 11px; font-weight: 900; text-decoration: none; color: #111; box-shadow: 2px 2px 0 #111;">
                 VIEW LISTING ↗
               </a>
+              <button onclick="if(window._ctRentalFilterSuburb) window._ctRentalFilterSuburb('${esc(item.suburb)}')" style="display: block; width: 100%; text-align: center; border: 2px solid #111; background: #FAF6E9; padding: 4px; font-size: 11px; font-weight: 900; text-transform: uppercase; color: #111; cursor: pointer; box-sizing: border-box;">
+                All ${esc(item.suburb)} listings →
+              </button>
             </div>
           </div>
         `;

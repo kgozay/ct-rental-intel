@@ -1,12 +1,14 @@
 import { useState, useEffect, useMemo, useRef, Suspense, lazy } from 'react';
 import { Link } from 'react-router-dom';
 import ListingsTable from './components/ListingsTable';
+import FilterSummary from './components/FilterSummary';
 import { SUBURBS_LIST } from './utils/suburbs';
 
 const PriceChart = lazy(() => import('./components/PriceChart'));
 const MapView = lazy(() => import('./components/MapView'));
 const AIPanel = lazy(() => import('./components/AIPanel'));
 const SuburbComparison = lazy(() => import('./components/SuburbComparison'));
+const ListingDrawer = lazy(() => import('./components/ListingDrawer'));
 
 export default function App() {
   const [theme, setTheme] = useState(() => {
@@ -27,6 +29,7 @@ export default function App() {
   const [scraping, setScraping] = useState(false);
   const [notice, setNotice] = useState(null);
   const [activeTab, setActiveTab] = useState('table');
+  const [selectedListing, setSelectedListing] = useState(null);
 
   // Bedroom filter for the history chart (drives a separate /api/history fetch)
   const [historyBeds, setHistoryBeds] = useState(null);
@@ -175,6 +178,7 @@ export default function App() {
 
   const activeSuburbsCount = new Set(filteredListings.map(l => l.suburb)).size;
   const goodValueCount = filteredListings.filter(l => l.value_score > 1.15).length;
+  const isFiltered = filteredListings.length !== listings.length;
 
   const rates = filteredListings.map(l => l.price_per_m2).filter(r => r !== null).sort((a, b) => a - b);
   let medianRate = '—';
@@ -184,6 +188,46 @@ export default function App() {
       ? `R ${rates[mid]}`
       : `R ${Math.round((rates[mid - 1] + rates[mid]) / 2)}`;
   }
+
+  const bestSuburb = useMemo(() => {
+    const groups = {};
+    filteredListings.forEach(l => {
+      if (l.price_per_m2 !== null) {
+        if (!groups[l.suburb]) groups[l.suburb] = [];
+        groups[l.suburb].push(l.price_per_m2);
+      }
+    });
+    let best = null;
+    let bestMedian = Infinity;
+    Object.entries(groups).forEach(([suburb, ppm2]) => {
+      if (ppm2.length < 2) return;
+      const sorted = [...ppm2].sort((a, b) => a - b);
+      const mid = Math.floor(sorted.length / 2);
+      const median = sorted.length % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+      if (median < bestMedian) { bestMedian = median; best = suburb; }
+    });
+    return best;
+  }, [filteredListings]);
+
+  const suburbMedianPrices = useMemo(() => {
+    const groups = {};
+    listings.forEach(l => {
+      if (!groups[l.suburb]) groups[l.suburb] = [];
+      groups[l.suburb].push(l.price);
+    });
+    const result = {};
+    Object.entries(groups).forEach(([suburb, prices]) => {
+      const sorted = [...prices].sort((a, b) => a - b);
+      const mid = Math.floor(sorted.length / 2);
+      result[suburb] = sorted.length % 2 !== 0 ? sorted[mid] : Math.round((sorted[mid - 1] + sorted[mid]) / 2);
+    });
+    return result;
+  }, [listings]);
+
+  const handleDrillDown = (suburb, beds) => {
+    setFilters(prev => ({ ...prev, suburbs: [suburb], minBeds: beds }));
+    setActiveTab('table');
+  };
 
   const formatScrapeDate = (dateStr) => {
     if (!dateStr) return 'Never';
@@ -236,13 +280,16 @@ export default function App() {
         </div>
       )}
 
+      {/* ACTIVE FILTER SUMMARY STRIP */}
+      <FilterSummary filters={filters} setFilters={setFilters} />
+
       {/* DASHBOARD TAB CONTROLS */}
       <div className="flex flex-wrap gap-3.5 mb-6 select-none">
         {[
           { id: 'table', label: 'Table' },
           { id: 'charts', label: 'Charts' },
           { id: 'map', label: 'Map' },
-          { id: 'compare', label: 'Compare' },
+          { id: 'compare', label: 'Suburbs' },
           { id: 'ai', label: 'AI Analysis' }
         ].map(tab => {
           const isActive = activeTab === tab.id;
@@ -263,13 +310,13 @@ export default function App() {
       </div>
 
       {/* KEY KPI CARDS GRID */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4.5 mb-7 select-none">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4.5 mb-7 select-none">
         <div className="kpi-card bg-yellow border-[3px] border-ink shadow-[4px_4px_0_#111111] p-4 rounded-none">
           <div className="text-3xl md:text-[2.125rem] font-black line-clamp-1 leading-none text-ink">
             {filteredListings.length}
           </div>
           <div className="text-[0.6875rem] font-black uppercase tracking-wider text-ink/70 mt-1.5">
-            Listings
+            Listings{isFiltered ? <span className="ml-1 opacity-60">(filtered)</span> : ''}
           </div>
         </div>
         <div className="kpi-card bg-white border-[3px] border-ink shadow-[4px_4px_0_#111111] p-4 rounded-none">
@@ -294,6 +341,14 @@ export default function App() {
           </div>
           <div className="text-[0.6875rem] font-black uppercase tracking-wider text-ink/70 mt-1.5">
             {shortlisted.size > 0 ? 'Shortlisted' : 'Good Value'}
+          </div>
+        </div>
+        <div className="kpi-card bg-lime border-[3px] border-ink shadow-[4px_4px_0_#111111] p-4 rounded-none">
+          <div className="text-xl md:text-2xl font-black leading-tight text-ink line-clamp-2">
+            {bestSuburb ?? '—'}
+          </div>
+          <div className="text-[0.6875rem] font-black uppercase tracking-wider text-ink/70 mt-1.5">
+            Best Value Suburb
           </div>
         </div>
       </div>
@@ -325,6 +380,8 @@ export default function App() {
                 shortlisted={shortlisted}
                 toggleShortlist={toggleShortlist}
                 lastVisit={lastVisit}
+                onSelectListing={setSelectedListing}
+                selectedListingUrl={selectedListing?.url}
               />
             )}
 
@@ -334,18 +391,25 @@ export default function App() {
                 history={history}
                 historyBeds={historyBeds}
                 setHistoryBeds={setHistoryBeds}
+                onDrillDown={handleDrillDown}
               />
             )}
 
             {activeTab === 'map' && (
-              <MapView listings={filteredListings} />
+              <MapView
+                listings={filteredListings}
+                onFilterSuburb={(suburb) => {
+                  setFilters(prev => ({ ...prev, suburbs: [suburb] }));
+                  setActiveTab('table');
+                }}
+              />
             )}
 
             {activeTab === 'compare' && (
               <SuburbComparison
-                listings={listings}
+                listings={filteredListings}
                 history={history}
-                medians={medians}
+                onDrillDown={handleDrillDown}
               />
             )}
 
@@ -357,6 +421,16 @@ export default function App() {
             )}
           </Suspense>
         </main>
+      )}
+      {/* LISTING DETAIL DRAWER */}
+      {selectedListing && (
+        <Suspense fallback={null}>
+          <ListingDrawer
+            listing={selectedListing}
+            suburbMedianPrices={suburbMedianPrices}
+            onClose={() => setSelectedListing(null)}
+          />
+        </Suspense>
       )}
     </div>
   );
