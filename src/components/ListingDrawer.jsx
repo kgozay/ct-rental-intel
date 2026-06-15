@@ -1,12 +1,41 @@
-import { useEffect } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import ValueBadge from './ValueBadge';
 
 export default function ListingDrawer({ listing, suburbMedianPrices, onClose }) {
+  const [verdict, setVerdict] = useState(null);
+  const [verdictLoading, setVerdictLoading] = useState(false);
+  const verdictCache = useRef({});
+
   useEffect(() => {
     const handler = (e) => { if (e.key === 'Escape') onClose(); };
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
   }, [onClose]);
+
+  useEffect(() => {
+    if (!listing?.url) return;
+    setVerdict(null);
+
+    if (verdictCache.current[listing.url] !== undefined) {
+      setVerdict(verdictCache.current[listing.url]);
+      return;
+    }
+
+    setVerdictLoading(true);
+    const suburbMedianPrice = suburbMedianPrices?.[listing.suburb] ?? null;
+    fetch('/api/verdict', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ listing, suburbMedianPrice }),
+    })
+      .then(r => r.ok ? r.json() : { verdict: null })
+      .then(data => {
+        verdictCache.current[listing.url] = data.verdict || null;
+        setVerdict(data.verdict || null);
+      })
+      .catch(() => { verdictCache.current[listing.url] = null; })
+      .finally(() => setVerdictLoading(false));
+  }, [listing?.url]);
 
   if (!listing) return null;
 
@@ -142,6 +171,25 @@ export default function ListingDrawer({ listing, suburbMedianPrices, onClose }) 
               <div className="text-xs font-bold text-ink/40">No comparison data available</div>
             )}
           </div>
+
+          {/* AI Verdict */}
+          {(verdictLoading || verdict) && (
+            <div className="border-t-[3px] border-ink pt-4">
+              <div className="text-[0.625rem] font-black uppercase tracking-wider text-ink/50 mb-2">
+                AI Verdict
+              </div>
+              {verdictLoading ? (
+                <div className="space-y-2 animate-pulse">
+                  <div className="h-3 bg-neutral-200 rounded w-full" />
+                  <div className="h-3 bg-neutral-200 rounded w-4/5" />
+                </div>
+              ) : (
+                <p className="text-sm font-semibold text-ink leading-snug">
+                  <span className="text-blue mr-1 select-none">✦</span>{verdict}
+                </p>
+              )}
+            </div>
+          )}
 
           {/* Details section */}
           <div className="border-t-[3px] border-ink pt-4">
