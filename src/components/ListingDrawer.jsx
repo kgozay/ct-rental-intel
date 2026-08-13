@@ -256,7 +256,11 @@ export default function ListingDrawer({ listing, suburbMedianPrices, shortlisted
               {listing.available_date && (
                 <div className="flex justify-between border-b border-ink/10 pb-1">
                   <span className="text-ink/50 uppercase">Occupation</span>
-                  <span className="font-black">{listing.available_date}</span>
+                  <span className="font-black">
+                    {listing.available_date <= new Date().toISOString().split('T')[0]
+                      ? `Immediate (${listing.available_date})`
+                      : listing.available_date}
+                  </span>
                 </div>
               )}
               {listing.agency_name && (

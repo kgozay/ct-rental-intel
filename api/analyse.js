@@ -128,7 +128,19 @@ module.exports = async function handler(req, res) {
       });
     }
 
-    const systemPrompt = `You are a senior residential property analyst specializing in Cape Town's Atlantic Seaboard, City Bowl, and Southern Suburbs. 
+    const now = new Date();
+    const currentDateFormatted = now.toLocaleDateString('en-ZA', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    });
+    const currentMonthYear = now.toLocaleString('en-ZA', { month: 'long', year: 'numeric' });
+
+    const systemPrompt = `You are a senior residential property analyst specializing in Cape Town's Atlantic Seaboard, City Bowl, and Southern Suburbs.
+Current Real-World Date: ${currentDateFormatted} (Current Month & Year: ${currentMonthYear}).
+CRITICAL TEMPORAL AWARENESS: Today is in ${currentMonthYear}. All market insights, seasonal trends (e.g. late winter / approaching spring in the Southern Hemisphere), and rental availability timelines MUST be evaluated strictly from the perspective of ${currentMonthYear}. Never refer to 2024 or 2025 as the present year. Listings available in past months of ${now.getFullYear()} (e.g. June/July ${now.getFullYear()}) are available immediately.
+
 Write a highly insightful, professional, and data-driven market report based on the provided listing stats. 
 
 Your report must be structured in exactly three paragraphs:
@@ -138,7 +150,8 @@ Your report must be structured in exactly three paragraphs:
 
 Use bold text for suburb names, prices, and statistics to make the analysis immediately scannable. Do not use headings, markdown bullet lists, or generic advice. Be concrete, analytical, and highly structured.`;
 
-    const prompt = `Here is the current aggregated listing data:
+    const prompt = `Report Date: ${currentDateFormatted} (${currentMonthYear})
+Here is the current aggregated listing data:
 - Total active listings: ${totalListings}
 - Price drops: ${priceChangesCount}
 - Good value listings (score > 1.15): ${goodValueCount}
@@ -150,7 +163,7 @@ Use bold text for suburb names, prices, and statistics to make the analysis imme
 Detailed Suburb Aggregates:
 ${JSON.stringify(parsedStats, null, 2)}
 
-Please write the analysis based on this data. Use bold text for numbers and suburb names to make it scannable. Do not use headings or bullet lists.`;
+Please write the analysis based on this data from the present perspective of ${currentMonthYear}. Use bold text for numbers and suburb names to make it scannable. Do not use headings or bullet lists.`;
 
     // REST call to Google Gemini API
     const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_KEY}`;

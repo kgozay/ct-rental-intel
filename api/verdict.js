@@ -25,9 +25,11 @@ function generateHeuristicVerdict(listing, suburbMedianPrice) {
     detailComment = ` Offers a ${listing.bedrooms}-bedroom layout with ${listing.furnished ? 'furnished' : 'unfurnished'} interior.`;
   }
 
-  const availComment = listing.available_date
-    ? ` Available for occupation from ${listing.available_date}.`
-    : ' Ready for immediate occupation.';
+  const todayIso = new Date().toISOString().split('T')[0];
+  const isImmediate = !listing.available_date || listing.available_date <= todayIso;
+  const availComment = isImmediate
+    ? ' Ready for immediate occupation.'
+    : ` Available for occupation from ${listing.available_date}.`;
 
   return `${priceComment}${detailComment}${availComment}`.trim();
 }
@@ -54,6 +56,15 @@ module.exports = async function handler(req, res) {
       ? (listing.price < suburbMedianPrice ? 'below' : listing.price > suburbMedianPrice ? 'above' : 'at')
       : null;
 
+    const now = new Date();
+    const todayIso = now.toISOString().split('T')[0];
+    const currentMonthYear = now.toLocaleString('en-ZA', { month: 'long', year: 'numeric' });
+
+    const isImmediate = !listing.available_date || listing.available_date <= todayIso;
+    const availText = isImmediate
+      ? `Available immediately (ready for immediate occupation as of ${currentMonthYear})`
+      : `Available from ${listing.available_date}`;
+
     const listingContext = [
       `Suburb: ${listing.suburb}`,
       `Price: R${(listing.price || 0).toLocaleString('en-ZA')}/mo`,
@@ -63,13 +74,18 @@ module.exports = async function handler(req, res) {
       listing.size_m2 ? `Size: ${listing.size_m2}m²` : null,
       listing.price_per_m2 ? `R/m²: ${listing.price_per_m2}` : null,
       listing.furnished === true ? 'Furnished' : listing.furnished === false ? 'Unfurnished' : null,
-      listing.available_date ? `Available: ${listing.available_date}` : 'Available: now',
+      availText,
       listing.previous_price && listing.price < listing.previous_price
         ? `Price dropped from R${listing.previous_price.toLocaleString('en-ZA')}`
         : null,
     ].filter(Boolean).join(' · ');
 
-    const prompt = `You are a Cape Town rental analyst. Write exactly 1–2 complete sentences that give a prospective tenant a clear, concise, and honest verdict on this listing. Mention price relative to the suburb median (use percentage if meaningful), size efficiency or value, furnishing, and availability timing. Be specific and direct — no filler phrases like "it's worth noting" or "in conclusion". Do not truncate the sentences. Listing data: ${listingContext}`;
+    const prompt = `Today's Date: ${todayIso} (${currentMonthYear}).
+You are a Cape Town rental analyst evaluating a listing today in ${currentMonthYear}.
+Write exactly 1–2 complete sentences providing a tenant with a clear, concise, and honest verdict on this listing relative to today (${currentMonthYear}).
+Mention price relative to the suburb median (use percentage if meaningful), size efficiency or value, furnishing, and occupation availability (note: if listed as immediate or with a past date in ${now.getFullYear()}, it is available immediately).
+Be specific and direct — no filler phrases like "it's worth noting" or "in conclusion". Do not truncate the sentences.
+Listing data: ${listingContext}`;
 
     const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_KEY}`;
     const body = {

@@ -39,6 +39,69 @@ export function isValid(raw) {
     typeLower.includes('maisonette');
 }
 
+export const MONTH_MAP = {
+  JAN: 0, JANUARY: 0,
+  FEB: 1, FEBRUARY: 1,
+  MAR: 2, MARCH: 2,
+  APR: 3, APRIL: 3,
+  MAY: 4,
+  JUN: 5, JUNE: 5,
+  JUL: 6, JULY: 6,
+  AUG: 7, AUGUST: 7,
+  SEP: 8, SEPTEMBER: 8,
+  OCT: 9, OCTOBER: 9,
+  NOV: 10, NOVEMBER: 10,
+  DEC: 11, DECEMBER: 11
+};
+
+export function parseAvailableDate(status) {
+  if (!status || typeof status !== 'string') return null;
+  const s = status.toUpperCase().trim();
+  
+  const today = new Date();
+  const todayIso = today.toISOString().split('T')[0];
+
+  if (
+    s === 'AVAILABLE NOW' ||
+    s === 'AVAILABLE IMMEDIATELY' ||
+    s === 'AVAILABLE IMMEDIATE' ||
+    s === 'IMMEDIATE' ||
+    s === 'IMMEDIATELY' ||
+    s === 'NOW'
+  ) {
+    return todayIso;
+  }
+  
+  const match = s.match(/(?:AVAILABLE(?::|\s+FROM|\s+AS\s+OF)?\s*)?(\d{1,2})\s+([A-Z]{3,9})(?:\s+(\d{4}))?/i);
+  if (match) {
+    const day = parseInt(match[1], 10);
+    const monthKey = match[2].toUpperCase();
+    const explicitYear = match[3] ? parseInt(match[3], 10) : null;
+    
+    const month = MONTH_MAP[monthKey];
+    if (month !== undefined && day >= 1 && day <= 31) {
+      let year = explicitYear || today.getFullYear();
+      
+      if (!explicitYear) {
+        const currentMonth = today.getMonth();
+        if (month < currentMonth && (currentMonth - month) > 7) {
+          year += 1;
+        }
+      }
+      
+      const d = new Date(year, month, day);
+      if (!isNaN(d.getTime())) {
+        const yyyy = d.getFullYear();
+        const mm = String(d.getMonth() + 1).padStart(2, '0');
+        const dd = String(d.getDate()).padStart(2, '0');
+        return `${yyyy}-${mm}-${dd}`;
+      }
+    }
+  }
+  
+  return null;
+}
+
 export function computeValueScores(normalisedListings) {
   const suburbPpm2 = {};
   const suburbBedPrices = {};

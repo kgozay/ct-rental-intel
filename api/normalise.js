@@ -69,6 +69,9 @@ function parseAvailableDate(status) {
   if (!status || typeof status !== 'string') return null;
   const s = status.toUpperCase().trim();
   
+  const today = new Date();
+  const todayIso = today.toISOString().split('T')[0];
+
   if (
     s === 'AVAILABLE NOW' ||
     s === 'AVAILABLE IMMEDIATELY' ||
@@ -77,7 +80,7 @@ function parseAvailableDate(status) {
     s === 'IMMEDIATELY' ||
     s === 'NOW'
   ) {
-    return new Date().toISOString().split('T')[0];
+    return todayIso;
   }
   
   // Matches "AVAILABLE: 01 JUL", "AVAILABLE 1 JULY", "AVAILABLE FROM 15 AUG 2026", "01 JUL 2026", etc.
@@ -89,12 +92,16 @@ function parseAvailableDate(status) {
     
     const month = MONTH_MAP[monthKey];
     if (month !== undefined && day >= 1 && day <= 31) {
-      const now = new Date();
-      let year = explicitYear || now.getFullYear();
+      let year = explicitYear || today.getFullYear();
       
-      // If no explicit year and target month has already passed in the current year, it must be for next year
-      if (!explicitYear && month < now.getMonth()) {
-        year += 1;
+      // If no explicit year is present:
+      // Recent past months (e.g. June/July when currently in August) belong to the current year.
+      // Only rollover to next year if month is far in the past (e.g. > 7 months earlier, like Jan when in Dec).
+      if (!explicitYear) {
+        const currentMonth = today.getMonth();
+        if (month < currentMonth && (currentMonth - month) > 7) {
+          year += 1;
+        }
       }
       
       const d = new Date(year, month, day);

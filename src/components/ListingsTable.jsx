@@ -482,7 +482,11 @@ export default function ListingsTable({ listings, filteredListings, filters, set
                       <ValueBadge score={item.value_score} />
                     </td>
                     <td className="px-4 py-3 border-t border-neutral-200 text-xs font-bold text-neutral-600">
-                      {item.available_date ?? '—'}
+                      {item.available_date
+                        ? item.available_date <= new Date().toISOString().split('T')[0]
+                          ? <span className="text-lime font-black" title={`Listed available as of ${item.available_date}`}>Immediate</span>
+                          : item.available_date
+                        : '—'}
                     </td>
                     <td className="px-4 py-3 border-t border-neutral-200 text-xs font-bold text-neutral-500">
                       {days !== null ? `${days}d` : '—'}

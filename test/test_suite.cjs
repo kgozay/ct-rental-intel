@@ -111,10 +111,10 @@ test("parseAvailableDate - handles NOW and IMMEDIATELY", () => {
   assert.strictEqual(parseAvailableDate("Now"), today);
 });
 
-test("parseAvailableDate - parses AVAILABLE: 01 JUL format", () => {
+test("parseAvailableDate - parses AVAILABLE: 01 JUL format preserving current year", () => {
+  const currentYear = new Date().getFullYear();
   const parsed = parseAvailableDate("AVAILABLE: 01 JUL");
-  assert.ok(parsed);
-  assert.match(parsed, /^\d{4}-07-01$/);
+  assert.strictEqual(parsed, `${currentYear}-07-01`);
 });
 
 test("parseAvailableDate - parses full month and from formats", () => {
