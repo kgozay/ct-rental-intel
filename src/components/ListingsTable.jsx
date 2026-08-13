@@ -3,6 +3,7 @@ import ValueBadge from './ValueBadge';
 import { SUBURBS_LIST } from '../utils/suburbs';
 
 const DEFAULT_FILTERS = {
+  search: '',
   suburbs: [...SUBURBS_LIST],
   maxPrice: 80000,
   minBeds: null,
@@ -15,11 +16,13 @@ const DEFAULT_FILTERS = {
 
 function daysAgo(isoString) {
   if (!isoString) return null;
-  return Math.floor((Date.now() - new Date(isoString).getTime()) / 86400000);
+  const diff = Date.now() - new Date(isoString).getTime();
+  if (isNaN(diff)) return null;
+  return Math.max(0, Math.floor(diff / 86400000));
 }
 
 function exportCsv(rows) {
-  const headers = ['Suburb', 'Type', 'Beds', 'Price (ZAR)', 'Size (m²)', 'R/m²', 'Value', 'Available', 'Days Listed', 'Agency', 'URL'];
+  const headers = ['Suburb', 'Address', 'Type', 'Beds', 'Baths', 'Price (ZAR)', 'Size (m²)', 'R/m²', 'Value', 'Furnished', 'Available', 'Days Listed', 'Agency', 'URL'];
   const escape = (v) => {
     if (v === null || v === undefined) return '';
     const s = String(v);
@@ -28,15 +31,24 @@ function exportCsv(rows) {
   const csv = [
     headers.join(','),
     ...rows.map(l => [
-      l.suburb, l.property_type, l.bedrooms ?? '', l.price,
-      l.size_m2 ?? '', l.price_per_m2 ?? '',
+      l.suburb,
+      l.address ?? '',
+      l.property_type,
+      l.bedrooms ?? '',
+      l.bathrooms ?? '',
+      l.price,
+      l.size_m2 ?? '',
+      l.price_per_m2 ?? '',
       l.value_score > 1.15 ? 'Good value' : l.value_score < 0.85 ? 'Expensive' : 'Fair',
-      l.available_date ?? '', daysAgo(l.created_at) ?? '',
-      l.agency_name ?? '', l.url
+      l.furnished === true ? 'Yes' : l.furnished === false ? 'No' : '',
+      l.available_date ?? '',
+      daysAgo(l.created_at) ?? '',
+      l.agency_name ?? '',
+      l.url
     ].map(escape).join(','))
   ].join('\n');
 
-  const blob = new Blob([csv], { type: 'text/csv' });
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
@@ -48,17 +60,21 @@ function exportCsv(rows) {
 }
 
 function SortHdr({ field, title, sortField, sortAsc, handleSort, children }) {
+  const isSorted = sortField === field;
   return (
     <th
       onClick={() => handleSort(field)}
       onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { handleSort(field); e.preventDefault(); } }}
       className="px-4 py-3 cursor-pointer select-none hover:bg-neutral-800 transition-colors whitespace-nowrap focus:outline-none focus:bg-neutral-800"
-      aria-sort={sortField === field ? (sortAsc ? 'ascending' : 'descending') : 'none'}
+      aria-sort={isSorted ? (sortAsc ? 'ascending' : 'descending') : 'none'}
       role="columnheader"
       tabIndex={0}
       title={title}
     >
-      {children} {sortField === field ? (sortAsc ? '▲' : '▼') : '▾'}
+      <span className="inline-flex items-center gap-1">
+        {children}
+        <span className="text-[0.625rem] opacity-80">{isSorted ? (sortAsc ? '▲' : '▼') : '▾'}</span>
+      </span>
     </th>
   );
 }
@@ -90,6 +106,7 @@ export default function ListingsTable({ listings, filteredListings, filters, set
   );
 
   const isFiltered = useMemo(() =>
+    (filters.search && filters.search.trim() !== '') ||
     filters.suburbs.length < SUBURBS_LIST.length ||
     filters.maxPrice < 80000 ||
     filters.minBeds !== null ||
@@ -107,38 +124,63 @@ export default function ListingsTable({ listings, filteredListings, filters, set
   }, [listings, filters.availableBefore]);
 
   const sortedListings = useMemo(() => [...filteredListings].sort((a, b) => {
-    let valA, valB;
+    // Helper to compare values while keeping nulls at the end regardless of direction
+    const compareWithNullsLast = (vA, vB, asc) => {
+      const aNull = vA === null || vA === undefined || isNaN(vA);
+      const bNull = vB === null || vB === undefined || isNaN(vB);
+      if (aNull && bNull) return 0;
+      if (aNull) return 1;
+      if (bNull) return -1;
+      if (vA < vB) return asc ? -1 : 1;
+      if (vA > vB) return asc ? 1 : -1;
+      return 0;
+    };
+
     switch (sortField) {
-      case 'suburb':        valA = a.suburb; valB = b.suburb; break;
-      case 'property_type': valA = a.property_type; valB = b.property_type; break;
-      case 'bedrooms':      valA = a.bedrooms ?? 0; valB = b.bedrooms ?? 0; break;
-      case 'price':         valA = a.price; valB = b.price; break;
-      case 'size_m2':       valA = a.size_m2 ?? 0; valB = b.size_m2 ?? 0; break;
-      case 'price_per_m2':  valA = a.price_per_m2 ?? 999999; valB = b.price_per_m2 ?? 999999; break;
-      case 'value_score':   valA = a.value_score ?? 0; valB = b.value_score ?? 0; break;
-      case 'agency_name':   valA = a.agency_name || ''; valB = b.agency_name || ''; break;
-      case 'days':          valA = a.created_at || ''; valB = b.created_at || ''; break;
-      case 'available':     valA = a.available_date || 'zzz'; valB = b.available_date || 'zzz'; break;
-      default:              valA = a.price; valB = b.price;
+      case 'suburb':
+        return sortAsc ? a.suburb.localeCompare(b.suburb) : b.suburb.localeCompare(a.suburb);
+      case 'property_type':
+        return sortAsc ? (a.property_type || '').localeCompare(b.property_type || '') : (b.property_type || '').localeCompare(a.property_type || '');
+      case 'bedrooms':
+        return compareWithNullsLast(a.bedrooms, b.bedrooms, sortAsc);
+      case 'price':
+        return compareWithNullsLast(a.price, b.price, sortAsc);
+      case 'size_m2':
+        return compareWithNullsLast(a.size_m2, b.size_m2, sortAsc);
+      case 'price_per_m2':
+        return compareWithNullsLast(a.price_per_m2, b.price_per_m2, sortAsc);
+      case 'value_score':
+        return compareWithNullsLast(a.value_score, b.value_score, sortAsc);
+      case 'agency_name':
+        return sortAsc ? (a.agency_name || '').localeCompare(b.agency_name || '') : (b.agency_name || '').localeCompare(a.agency_name || '');
+      case 'days': {
+        const daysA = daysAgo(a.created_at);
+        const daysB = daysAgo(b.created_at);
+        return compareWithNullsLast(daysA, daysB, sortAsc);
+      }
+      case 'available': {
+        const dateA = a.available_date || null;
+        const dateB = b.available_date || null;
+        return compareWithNullsLast(dateA, dateB, sortAsc);
+      }
+      default:
+        return compareWithNullsLast(a.price, b.price, sortAsc);
     }
-    if (valA < valB) return sortAsc ? -1 : 1;
-    if (valA > valB) return sortAsc ? 1 : -1;
-    return 0;
   }), [filteredListings, sortField, sortAsc]);
 
   return (
     <div className="tableview">
-      {/* FILTER PANEL */}
+      {/* FILTER & SEARCH PANEL */}
       <details open className="border-2 border-ink bg-paper p-5 mb-7 rounded-none group">
         <summary className="list-none flex items-center justify-between cursor-pointer select-none focus:outline-none">
           <div className="flex items-center gap-3">
             <h2 className="inline-block bg-ink text-paper text-xs font-black uppercase tracking-wider px-2.5 py-1 m-0">
-              Filters
+              Filters & Search
             </h2>
             {isFiltered && (
               <button
                 onClick={(e) => { e.preventDefault(); setFilters(DEFAULT_FILTERS); }}
-                className="border-2 border-ink bg-white text-ink text-[0.6875rem] font-black uppercase px-2 py-0.5 hover:bg-yellow transition-colors focus:outline-none"
+                className="border-2 border-ink bg-white text-ink text-[0.6875rem] font-black uppercase px-2 py-0.5 hover:bg-yellow transition-colors focus:outline-none cursor-pointer"
               >
                 Reset all
               </button>
@@ -150,8 +192,36 @@ export default function ListingsTable({ listings, filteredListings, filters, set
         </summary>
 
         <div className="flex flex-col mt-4 gap-0">
+          {/* Row 0 — Quick Search */}
+          <div className="pb-4">
+            <div className="relative max-w-md">
+              <label htmlFor="listing-search-input" className="text-[0.6875rem] font-black uppercase tracking-wider text-ink/50 block mb-1.5">
+                Keyword Search
+              </label>
+              <div className="flex items-center">
+                <input
+                  id="listing-search-input"
+                  type="text"
+                  value={filters.search || ''}
+                  onChange={(e) => setFilters({ ...filters, search: e.target.value })}
+                  placeholder="Search street, suburb, type, agency..."
+                  className="w-full border-2 border-ink bg-white text-ink px-3 py-1.5 text-xs font-bold focus:outline-none focus:ring-2 focus:ring-blue shadow-[2px_2px_0_#111111]"
+                />
+                {filters.search && (
+                  <button
+                    onClick={() => setFilters({ ...filters, search: '' })}
+                    className="absolute right-2 text-xs font-black text-ink/60 hover:text-ink cursor-pointer px-1"
+                    aria-label="Clear search"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+
           {/* Row 1 — Suburbs */}
-          <div className="flex flex-col gap-2 pb-4">
+          <div className="border-t border-ink/10 flex flex-col gap-2 py-4">
             <div className="text-[0.6875rem] font-black uppercase tracking-wider text-ink/50">Suburb</div>
             <div className="flex flex-wrap gap-2">
               {SUBURBS_LIST.map(sub => {
@@ -248,7 +318,7 @@ export default function ListingsTable({ listings, filteredListings, filters, set
                   <>
                     <button
                       onClick={() => setFilters({ ...filters, availableBefore: '' })}
-                      className="border-2 border-ink bg-white px-2 py-1 text-xs font-bold text-blue hover:bg-neutral-100 focus:outline-none"
+                      className="border-2 border-ink bg-white px-2 py-1 text-xs font-bold text-blue hover:bg-neutral-100 focus:outline-none cursor-pointer"
                       aria-label="Clear date filter"
                     >
                       Clear
@@ -340,6 +410,7 @@ export default function ListingsTable({ listings, filteredListings, filters, set
                     <div className="flex flex-col items-center gap-3">
                       <div className="font-black text-sm text-ink">No listings match the active filters.</div>
                       <div className="text-xs text-neutral-500 font-medium max-w-sm text-left space-y-0.5">
+                        {filters.search && <div>· Search keyword: &ldquo;{filters.search}&rdquo;</div>}
                         {filters.suburbs.length < SUBURBS_LIST.length && (
                           <div>· Suburbs limited to {filters.suburbs.length} of {SUBURBS_LIST.length}</div>
                         )}
@@ -368,12 +439,13 @@ export default function ListingsTable({ listings, filteredListings, filters, set
                 const isPriceDrop = item.previous_price && item.price < item.previous_price;
                 const days = daysAgo(item.created_at);
                 const isNew = lastVisit && item.created_at && item.created_at > lastVisit;
+                const animDelay = Math.min(idx, 15) * 30;
 
                 return (
                   <tr
                     key={item.id || item.url}
                     className={`stagger-row ${onSelectListing ? 'cursor-pointer' : ''} ${item.url === selectedListingUrl ? 'bg-yellow border-l-[4px] border-l-blue' : isPriceDrop ? 'hover:bg-neutral-50 border-l-[4px] border-l-lime' : 'hover:bg-neutral-50'}`}
-                    style={{ animationDelay: `${idx * 40}ms` }}
+                    style={{ animationDelay: `${animDelay}ms` }}
                     onClick={() => onSelectListing?.(item)}
                   >
                     <td className="px-4 py-3 border-t border-neutral-200 font-bold text-xs uppercase">
@@ -433,6 +505,7 @@ export default function ListingsTable({ listings, filteredListings, filters, set
                           target="_blank"
                           rel="noreferrer"
                           className="inline-block border-2 border-ink bg-yellow font-black px-2.5 py-1 text-xs text-ink transition-transform duration-75 hover:translate-x-[-1px] hover:translate-y-[-1px] hover:shadow-[2px_2px_0_#111111] active:translate-x-[1px] active:translate-y-[1px] active:shadow-none"
+                          title="Open listing on Property24"
                         >
                           ↗
                         </a>
@@ -455,7 +528,7 @@ export default function ListingsTable({ listings, filteredListings, filters, set
           onClick={() => exportCsv(sortedListings)}
           className="border-2 border-ink bg-paper font-extrabold text-xs uppercase px-4 py-2 cursor-pointer hover:bg-neutral-100 transition-colors shadow-[2px_2px_0_#111111] hover:shadow-[3px_3px_0_#111111] active:shadow-none active:translate-x-[1px] active:translate-y-[1px]"
         >
-          ↓ Export CSV
+          ↓ Export CSV ({sortedListings.length})
         </button>
       </div>
       <div className="mt-2 text-[0.625rem] text-neutral-400 font-bold select-none space-y-0.5">

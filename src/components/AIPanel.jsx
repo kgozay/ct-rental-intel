@@ -8,8 +8,7 @@ export default function AIPanel({ filteredListings, filters }) {
   const [generatedAt, setGeneratedAt] = useState(null);
   const [showSkip, setShowSkip] = useState(false);
 
-  // Cache analyses by a signature of the inputs so re-clicking Generate with the
-  // same filters/data doesn't refire (and re-bill) the Gemini call.
+  // Cache analyses by signature of the inputs so re-clicking Generate doesn't re-query
   const cacheRef = useRef({});
   const skipTimerRef = useRef(null);
   const signature = JSON.stringify({
@@ -36,21 +35,13 @@ export default function AIPanel({ filteredListings, filters }) {
 
   // Typewriter effect
   useEffect(() => {
-    setShowSkip(false);
     if (skipTimerRef.current) clearTimeout(skipTimerRef.current);
 
     if (!analysis) {
-      Promise.resolve().then(() => {
-        setTypewriterIndex(0);
-      });
       return;
     }
 
-    Promise.resolve().then(() => {
-      setTypewriterIndex(0);
-    });
-
-    // speed: ~2 characters per tick to type relatively fast
+    // speed: ~2 characters per tick to stream fast
     const interval = setInterval(() => {
       setTypewriterIndex(prev => {
         if (prev < analysis.length) {
@@ -60,9 +51,11 @@ export default function AIPanel({ filteredListings, filters }) {
           return prev;
         }
       });
-    }, 12);
+    }, 10);
 
-    skipTimerRef.current = setTimeout(() => setShowSkip(true), 2000);
+    skipTimerRef.current = setTimeout(() => {
+      setShowSkip(true);
+    }, 1500);
 
     return () => {
       clearInterval(interval);
@@ -78,15 +71,18 @@ export default function AIPanel({ filteredListings, filters }) {
   };
 
   const handleAnalyse = async () => {
-    // Serve from cache if we've already analysed this exact filter/data signature.
     const cached = cacheRef.current[signature];
     if (cached) {
+      setShowSkip(false);
+      setTypewriterIndex(0);
       setAnalysis(cached.analysis);
       setGeneratedAt(cached.generatedAt);
       return;
     }
 
     setLoading(true);
+    setShowSkip(false);
+    setTypewriterIndex(0);
     setAnalysis('');
     try {
       const response = await fetch('/api/analyse', {
@@ -103,15 +99,16 @@ export default function AIPanel({ filteredListings, filters }) {
       });
       if (response.ok) {
         const data = await response.json();
+        setTypewriterIndex(0);
         setAnalysis(data.analysis);
         setGeneratedAt(data.generatedAt);
         cacheRef.current[signature] = { analysis: data.analysis, generatedAt: data.generatedAt };
       } else {
-        setAnalysis("Analysis failed — your Gemini API key may have reached its quota. Try again in a few minutes.");
+        setAnalysis("Analysis failed — the service is temporarily unavailable. Please try again in a moment.");
       }
     } catch (err) {
       console.error(err);
-      setAnalysis("Couldn't reach the AI service. Check your internet connection and try again.");
+      setAnalysis("Couldn't reach the AI analysis service. Please verify your connection and try again.");
     } finally {
       setLoading(false);
     }
@@ -128,7 +125,7 @@ export default function AIPanel({ filteredListings, filters }) {
       <div className="mb-6">
         <button
           onClick={handleAnalyse}
-          disabled={loading}
+          disabled={loading || filteredListings.length === 0}
           className="inline-flex items-center gap-2 border-[3px] border-ink bg-blue text-white font-extrabold uppercase px-[1.125rem] py-[0.6875rem] text-[0.8125rem] tracking-[0.5px] cursor-pointer transition-all duration-75 hover:translate-x-[-1px] hover:translate-y-[-1px] hover:shadow-[4px_4px_0_#111111] active:translate-x-[4px] active:translate-y-[4px] active:shadow-none disabled:bg-neutral-300 disabled:text-neutral-500 disabled:cursor-not-allowed select-none shadow-[2px_2px_0_#111111]"
         >
           {buttonLabel}
@@ -138,38 +135,38 @@ export default function AIPanel({ filteredListings, filters }) {
       <div
         className="border-[3px] border-ink bg-white p-5 min-h-[140px] text-sm md:text-base leading-relaxed text-ink font-medium rounded-none relative"
         role="region"
-        aria-label="AI market analysis"
+        aria-label="AI market analysis report"
         aria-live="polite"
       >
         {loading && (
-          <div className="flex items-center justify-center py-6 text-neutral-400 font-extrabold">
-            Analysing {filteredListings.length} listings — this takes 10–20 seconds...
+          <div className="flex items-center justify-center py-6 text-neutral-400 font-extrabold animate-pulse">
+            ✦ Analysing {filteredListings.length} listings with Gemini 2.5 Flash...
           </div>
         )}
 
         {!loading && !analysis && (
           <div className="text-neutral-500 font-medium">
-            <div className="font-black text-ink text-sm mb-1.5">AI market report</div>
+            <div className="font-black text-ink text-sm mb-1.5">AI Market Report</div>
             <p className="text-sm leading-relaxed max-w-lg">
-              Gemini 2.5 Flash reads the {filteredListings.length} active listings and writes a 3-paragraph analyst report — value picks by suburb and bedroom count, supply and furnishing patterns, and concrete tactics for where to search. Takes 10–20 seconds.
+              Generates a comprehensive, 3-paragraph analyst report evaluating value picks across your active {filteredListings.length} listings, identifying supply anomalies, and detailing concrete rental search tactics.
             </p>
           </div>
         )}
 
         {!loading && analysis && (
-          <div>
+          <div className="space-y-4">
             {streamedText.split('\n\n').map((para, idx) => {
-              const paraKey = `para-${idx}-${para.substring(0, 15)}`;
-              // Parse basic bold markers (**suburb**) inside typewriter
+              const paraKey = `para-${idx}`;
+              // Parse basic bold markers (**text**)
               const cleanPara = para.split('**').map((chunk, cIdx) => {
                 if (cIdx % 2 !== 0) {
-                  return <strong key={`${paraKey}-bold-${cIdx}`} className="font-black text-ink">{chunk}</strong>;
+                  return <strong key={`${paraKey}-b-${cIdx}`} className="font-black text-ink">{chunk}</strong>;
                 }
                 return chunk;
               });
 
               return (
-                <p key={paraKey} className="mb-4 last:mb-0">
+                <p key={paraKey} className="leading-relaxed">
                   {cleanPara}
                   {idx === streamedText.split('\n\n').length - 1 && !isStreamingFinished && (
                     <span className="blinking-cursor" />
@@ -187,7 +184,7 @@ export default function AIPanel({ filteredListings, filters }) {
             onClick={handleSkip}
             className="border-2 border-ink bg-bgrey text-ink text-[0.6875rem] font-black uppercase px-3 py-1 cursor-pointer hover:bg-neutral-200 transition-colors shadow-[1px_1px_0_#111111]"
           >
-            Skip Animation
+            Skip Animation ⏩
           </button>
         </div>
       )}

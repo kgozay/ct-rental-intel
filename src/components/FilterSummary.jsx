@@ -1,6 +1,7 @@
 import { SUBURBS_LIST } from '../utils/suburbs';
 
 const DEFAULT_FILTERS = {
+  search: '',
   suburbs: [...SUBURBS_LIST],
   maxPrice: 80000,
   minBeds: null,
@@ -14,42 +15,90 @@ const DEFAULT_FILTERS = {
 export default function FilterSummary({ filters, setFilters }) {
   const chips = [];
 
+  if (filters.search && filters.search.trim() !== '') {
+    chips.push({
+      key: 'search',
+      label: `SEARCH: "${filters.search}"`,
+      onClear: () => setFilters({ ...filters, search: '' })
+    });
+  }
+
   if (filters.suburbs.length < SUBURBS_LIST.length) {
     if (filters.suburbs.length === 0) {
-      chips.push({ key: 'suburbs', label: 'NO SUBURBS' });
+      chips.push({
+        key: 'suburbs',
+        label: 'NO SUBURBS',
+        onClear: () => setFilters({ ...filters, suburbs: [...SUBURBS_LIST] })
+      });
     } else if (filters.suburbs.length === 1) {
-      chips.push({ key: 'suburbs', label: filters.suburbs[0] });
+      chips.push({
+        key: 'suburbs',
+        label: filters.suburbs[0],
+        onClear: () => setFilters({ ...filters, suburbs: [...SUBURBS_LIST] })
+      });
     } else {
-      chips.push({ key: 'suburbs', label: `${filters.suburbs.length} SUBURBS` });
+      chips.push({
+        key: 'suburbs',
+        label: `${filters.suburbs.length} SUBURBS`,
+        onClear: () => setFilters({ ...filters, suburbs: [...SUBURBS_LIST] })
+      });
     }
   }
 
   if (filters.maxPrice < 80000) {
-    chips.push({ key: 'price', label: `≤R${filters.maxPrice.toLocaleString('en-ZA')}` });
+    chips.push({
+      key: 'price',
+      label: `≤R${filters.maxPrice.toLocaleString('en-ZA')}`,
+      onClear: () => setFilters({ ...filters, maxPrice: 80000 })
+    });
   }
 
   if (filters.minBeds !== null) {
-    chips.push({ key: 'beds', label: `${filters.minBeds}+ BEDS` });
+    chips.push({
+      key: 'beds',
+      label: `${filters.minBeds}+ BEDS`,
+      onClear: () => setFilters({ ...filters, minBeds: null })
+    });
   }
 
   if (filters.furnished === true) {
-    chips.push({ key: 'furnished', label: 'FURNISHED' });
+    chips.push({
+      key: 'furnished',
+      label: 'FURNISHED',
+      onClear: () => setFilters({ ...filters, furnished: null })
+    });
   }
 
   if (filters.goodValueOnly) {
-    chips.push({ key: 'value', label: 'GOOD VALUE' });
+    chips.push({
+      key: 'value',
+      label: 'GOOD VALUE',
+      onClear: () => setFilters({ ...filters, goodValueOnly: false })
+    });
   }
 
   if (filters.priceDropOnly) {
-    chips.push({ key: 'drops', label: 'PRICE DROPS' });
+    chips.push({
+      key: 'drops',
+      label: 'PRICE DROPS',
+      onClear: () => setFilters({ ...filters, priceDropOnly: false })
+    });
   }
 
   if (filters.availableBefore) {
-    chips.push({ key: 'date', label: `AVAIL. BEFORE ${filters.availableBefore}` });
+    chips.push({
+      key: 'date',
+      label: `AVAIL. BEFORE ${filters.availableBefore}`,
+      onClear: () => setFilters({ ...filters, availableBefore: '' })
+    });
   }
 
   if (filters.shortlistOnly) {
-    chips.push({ key: 'shortlist', label: 'SHORTLISTED' });
+    chips.push({
+      key: 'shortlist',
+      label: 'SHORTLISTED',
+      onClear: () => setFilters({ ...filters, shortlistOnly: false })
+    });
   }
 
   const hasFilters = chips.length > 0;
@@ -64,9 +113,19 @@ export default function FilterSummary({ filters, setFilters }) {
           {chips.map(chip => (
             <span
               key={chip.key}
-              className="inline-block border-2 border-ink bg-ink text-paper text-[0.625rem] font-black uppercase px-2.5 py-0.5 leading-snug"
+              className="inline-flex items-center gap-1.5 border-2 border-ink bg-ink text-paper text-[0.625rem] font-black uppercase px-2.5 py-0.5 leading-snug"
             >
-              {chip.label}
+              <span>{chip.label}</span>
+              {chip.onClear && (
+                <button
+                  onClick={chip.onClear}
+                  className="hover:text-yellow text-[0.7rem] leading-none cursor-pointer"
+                  title="Remove this filter"
+                  aria-label={`Remove filter ${chip.label}`}
+                >
+                  ✕
+                </button>
+              )}
             </span>
           ))}
           <button

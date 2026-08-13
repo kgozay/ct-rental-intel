@@ -21,7 +21,6 @@ export default function App() {
   }, [theme]);
 
   const [listings, setListings] = useState([]);
-  const [medians, setMedians] = useState({});
   const [history, setHistory] = useState([]);
   const [lastScraped, setLastScraped] = useState(null);
 
@@ -41,7 +40,11 @@ export default function App() {
   const toggleShortlist = (url) => {
     setShortlisted(prev => {
       const next = new Set(prev);
-      next.has(url) ? next.delete(url) : next.add(url);
+      if (next.has(url)) {
+        next.delete(url);
+      } else {
+        next.add(url);
+      }
       localStorage.setItem('shortlist', JSON.stringify([...next]));
       return next;
     });
@@ -55,6 +58,7 @@ export default function App() {
   });
 
   const [filters, setFilters] = useState({
+    search: '',
     suburbs: [...SUBURBS_LIST],
     maxPrice: 80000,
     minBeds: null,
@@ -74,8 +78,7 @@ export default function App() {
       const listRes = await fetch('/api/listings');
       if (listRes.ok) {
         const listData = await listRes.json();
-        setListings(listData.listings);
-        setMedians(listData.medians);
+        setListings(listData.listings || []);
         setLastScraped(listData.lastScraped);
         fetchedLastScraped = listData.lastScraped;
       }
@@ -165,6 +168,15 @@ export default function App() {
   };
 
   const filteredListings = useMemo(() => listings.filter(item => {
+    // Search query filter
+    if (filters.search && filters.search.trim()) {
+      const q = filters.search.toLowerCase().trim();
+      const matchAddress = item.address && item.address.toLowerCase().includes(q);
+      const matchSuburb = item.suburb && item.suburb.toLowerCase().includes(q);
+      const matchType = item.property_type && item.property_type.toLowerCase().includes(q);
+      const matchAgency = item.agency_name && item.agency_name.toLowerCase().includes(q);
+      if (!matchAddress && !matchSuburb && !matchType && !matchAgency) return false;
+    }
     if (filters.suburbs.length > 0 && !filters.suburbs.includes(item.suburb)) return false;
     if (item.price > filters.maxPrice) return false;
     if (filters.minBeds !== null && (item.bedrooms === null || item.bedrooms < filters.minBeds)) return false;
@@ -192,7 +204,7 @@ export default function App() {
   const bestSuburb = useMemo(() => {
     const groups = {};
     filteredListings.forEach(l => {
-      if (l.price_per_m2 !== null) {
+      if (l.price_per_m2 !== null && l.price_per_m2 > 0) {
         if (!groups[l.suburb]) groups[l.suburb] = [];
         groups[l.suburb].push(l.price_per_m2);
       }
@@ -212,8 +224,10 @@ export default function App() {
   const suburbMedianPrices = useMemo(() => {
     const groups = {};
     listings.forEach(l => {
-      if (!groups[l.suburb]) groups[l.suburb] = [];
-      groups[l.suburb].push(l.price);
+      if (typeof l.price === 'number' && l.price > 0) {
+        if (!groups[l.suburb]) groups[l.suburb] = [];
+        groups[l.suburb].push(l.price);
+      }
     });
     const result = {};
     Object.entries(groups).forEach(([suburb, prices]) => {
@@ -242,15 +256,15 @@ export default function App() {
         <Link to="/" className="text-2xl font-black tracking-tight uppercase no-underline text-paper hover:opacity-90">
           Cape Town Rental<span className="text-yellow">.</span>Intel
         </Link>
-        <div className="flex items-center gap-5 text-[0.8125rem] font-bold">
+        <div className="flex items-center gap-4 text-[0.8125rem] font-bold flex-wrap">
           <Link to="/" className="opacity-70 hover:opacity-100 no-underline text-paper uppercase tracking-wider">← Home</Link>
           <span className="opacity-80">Last scrape: {formatScrapeDate(lastScraped)}</span>
           <button
             onClick={() => setTheme(prev => prev === 'dark' ? 'light' : 'dark')}
-            className="border-2 border-ink bg-paper text-ink font-extrabold px-2 py-1.5 cursor-pointer hover:bg-neutral-100 transition-all select-none text-[0.8125rem] leading-none flex items-center justify-center rounded-none shadow-[2px_2px_0_#FAF6E9]"
+            className="border-2 border-paper bg-paper text-ink font-extrabold px-2.5 py-1 cursor-pointer hover:bg-neutral-100 transition-all select-none text-[0.8125rem] leading-none flex items-center justify-center rounded-none shadow-[2px_2px_0_#FAF6E9]"
             aria-label={theme === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
           >
-            {theme === 'dark' ? 'Light' : 'Dark'}
+            {theme === 'dark' ? '☀️ Light' : '🌙 Dark'}
           </button>
           <button
             onClick={handleRefresh}
@@ -273,7 +287,7 @@ export default function App() {
           <button
             onClick={() => setNotice(null)}
             className="font-black text-base px-2 cursor-pointer hover:opacity-70"
-            aria-label="Dismiss"
+            aria-label="Dismiss notice"
           >
             ✕
           </button>
@@ -284,7 +298,7 @@ export default function App() {
       <FilterSummary filters={filters} setFilters={setFilters} />
 
       {/* DASHBOARD TAB CONTROLS */}
-      <div className="flex flex-wrap gap-3.5 mb-6 select-none">
+      <div className="flex flex-wrap gap-3.5 mb-6 select-none" role="tablist">
         {[
           { id: 'table', label: 'Table' },
           { id: 'charts', label: 'Charts' },
@@ -297,6 +311,8 @@ export default function App() {
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
+              role="tab"
+              aria-selected={isActive}
               className={`border-[3px] border-ink font-extrabold uppercase text-sm px-6 py-2.5 cursor-pointer transition-all duration-75 ${
                 isActive
                   ? 'bg-blue text-white translate-x-[2px] translate-y-[2px] shadow-[2px_2px_0_#111111]'
@@ -392,12 +408,15 @@ export default function App() {
                 historyBeds={historyBeds}
                 setHistoryBeds={setHistoryBeds}
                 onDrillDown={handleDrillDown}
+                theme={theme}
               />
             )}
 
             {activeTab === 'map' && (
               <MapView
                 listings={filteredListings}
+                theme={theme}
+                onSelectListing={setSelectedListing}
                 onFilterSuburb={(suburb) => {
                   setFilters(prev => ({ ...prev, suburbs: [suburb] }));
                   setActiveTab('table');
@@ -428,6 +447,8 @@ export default function App() {
           <ListingDrawer
             listing={selectedListing}
             suburbMedianPrices={suburbMedianPrices}
+            shortlisted={shortlisted}
+            toggleShortlist={toggleShortlist}
             onClose={() => setSelectedListing(null)}
           />
         </Suspense>

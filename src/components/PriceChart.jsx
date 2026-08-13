@@ -14,7 +14,7 @@ const SUBURB_COLORS = {
   "Cape Town CBD": '#111111'   // ink
 };
 
-// 1. Custom Brutalist Tooltip
+// Custom Brutalist Tooltip
 const CustomTooltip = ({ active, payload, label, hint }) => {
   if (active && payload && payload.length) {
     return (
@@ -59,13 +59,17 @@ const ScatterTooltip = ({ active, payload }) => {
   return null;
 };
 
-export default function PriceChart({ listings, history, historyBeds, setHistoryBeds, onDrillDown }) {
+export default function PriceChart({ listings, history, historyBeds, setHistoryBeds, onDrillDown, theme }) {
+  const isDark = theme === 'dark';
+  const textColor = isDark ? '#FAF6E9' : '#111111';
+  const gridColor = isDark ? '#333333' : '#e5e5e5';
+
   // --- CHART 1: MEDIAN BY SUBURB & BED COUNT ---
   const bedCounts = [1, 2, 3];
   const chart1Data = bedCounts.map(beds => {
     const row = { beds: `${beds} Bed` };
     SUBURBS_LIST.forEach(sub => {
-      const match = listings.filter(l => l.suburb === sub && l.bedrooms === beds);
+      const match = listings.filter(l => l.suburb === sub && l.bedrooms === beds && typeof l.price === 'number');
       if (match.length > 0) {
         const prices = match.map(l => l.price).sort((a, b) => a - b);
         const mid = Math.floor(prices.length / 2);
@@ -74,6 +78,8 @@ export default function PriceChart({ listings, history, historyBeds, setHistoryB
     });
     return row;
   });
+
+  const hasChart1Data = chart1Data.some(row => SUBURBS_LIST.some(sub => row[sub] !== undefined));
 
   // --- CHART 2: MEDIAN OVER TIME (HISTORY) ---
   const historyByDate = {};
@@ -87,9 +93,10 @@ export default function PriceChart({ listings, history, historyBeds, setHistoryB
 
   // --- CHART 3: PRICE VS SIZE SCATTER ---
   const scatterData = {};
+  let totalScatterPoints = 0;
   SUBURBS_LIST.forEach(sub => {
     scatterData[sub] = listings
-      .filter(l => l.suburb === sub && l.size_m2 !== null && l.price !== null)
+      .filter(l => l.suburb === sub && l.size_m2 !== null && l.size_m2 > 0 && l.price !== null && l.price > 0)
       .map(l => ({
         x: l.size_m2,
         y: l.price,
@@ -97,6 +104,7 @@ export default function PriceChart({ listings, history, historyBeds, setHistoryB
         suburb: sub,
         price_per_m2: l.price_per_m2
       }));
+    totalScatterPoints += scatterData[sub].length;
   });
 
   return (
@@ -106,41 +114,48 @@ export default function PriceChart({ listings, history, historyBeds, setHistoryB
         <h2 className="inline-block bg-ink text-paper text-xs font-black uppercase tracking-wider px-2.5 py-1 mb-6">
           Median Price by Suburb & Beds
         </h2>
-        <div className="w-full h-80">
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={chart1Data} margin={{ top: 10, right: 10, left: 10, bottom: 5 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#e5e5e5" />
-              <XAxis dataKey="beds" tick={{ fill: '#111111', fontWeight: 'bold' }} stroke="#111111" />
-              <YAxis tickFormatter={(val) => `R ${val/1000}k`} tick={{ fill: '#111111', fontWeight: 'bold' }} stroke="#111111" />
-              <Tooltip content={(props) => (
-                <CustomTooltip
-                  {...props}
-                  hint={onDrillDown ? '↗ Click bar to filter table' : undefined}
-                />
-              )} />
-              <Legend wrapperStyle={{ fontWeight: 'bold', textTransform: 'uppercase', fontSize: '11px', paddingTop: '10px' }} />
-              {SUBURBS_LIST.map(sub => (
-                <Bar
-                  key={sub}
-                  dataKey={sub}
-                  fill={SUBURB_COLORS[sub]}
-                  stroke="#111111"
-                  strokeWidth={1.5}
-                  cursor={onDrillDown ? 'pointer' : 'default'}
-                  onClick={(data) => {
-                    if (onDrillDown && data[sub] !== undefined) {
-                      const bedNum = parseInt(data.beds, 10);
-                      onDrillDown(sub, bedNum);
-                    }
-                  }}
-                />
-              ))}
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
+        {!hasChart1Data ? (
+          <div className="flex flex-col items-center justify-center h-80 bg-neutral-50 dark:bg-neutral-900 border-2 border-dashed border-ink/30 text-neutral-400 font-bold p-4 text-center">
+            <span className="font-black text-ink text-sm mb-1">No listings available for bar chart</span>
+            <span className="text-xs text-neutral-400 font-medium">Try broadening your suburb or bedroom filters.</span>
+          </div>
+        ) : (
+          <div className="w-full h-80">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={chart1Data} margin={{ top: 10, right: 10, left: 10, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke={gridColor} />
+                <XAxis dataKey="beds" tick={{ fill: textColor, fontWeight: 'bold' }} stroke={textColor} />
+                <YAxis tickFormatter={(val) => `R ${val/1000}k`} tick={{ fill: textColor, fontWeight: 'bold' }} stroke={textColor} />
+                <Tooltip content={(props) => (
+                  <CustomTooltip
+                    {...props}
+                    hint={onDrillDown ? '↗ Click bar to filter table' : undefined}
+                  />
+                )} />
+                <Legend wrapperStyle={{ fontWeight: 'bold', textTransform: 'uppercase', fontSize: '11px', paddingTop: '10px', color: textColor }} />
+                {SUBURBS_LIST.map(sub => (
+                  <Bar
+                    key={sub}
+                    dataKey={sub}
+                    fill={SUBURB_COLORS[sub]}
+                    stroke="#111111"
+                    strokeWidth={1.5}
+                    cursor={onDrillDown ? 'pointer' : 'default'}
+                    onClick={(data) => {
+                      if (onDrillDown && data && data[sub] !== undefined) {
+                        const bedNum = parseInt(data.beds, 10);
+                        onDrillDown(sub, isNaN(bedNum) ? null : bedNum);
+                      }
+                    }}
+                  />
+                ))}
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        )}
       </div>
 
-      {/* Chart 2: Historical Timeline (only show if data points > 0) */}
+      {/* Chart 2: Historical Timeline */}
       <div className="border-[3px] border-ink bg-white p-5 shadow-[6px_6px_0_#111111] rounded-none">
         <div className="flex flex-wrap items-center gap-4 mb-6">
           <h2 className="inline-block bg-ink text-paper text-xs font-black uppercase tracking-wider px-2.5 py-1">
@@ -154,6 +169,7 @@ export default function PriceChart({ listings, history, historyBeds, setHistoryB
                 className={`border-2 border-ink px-3 py-1 text-xs font-bold cursor-pointer transition-colors duration-100 ${
                   historyBeds === opt.value ? 'bg-ink text-paper' : 'bg-white text-ink hover:bg-neutral-100'
                 }`}
+                aria-pressed={historyBeds === opt.value}
               >
                 {opt.label}
               </button>
@@ -161,11 +177,11 @@ export default function PriceChart({ listings, history, historyBeds, setHistoryB
           </div>
         </div>
         {chart2Data.length <= 1 ? (
-          <div className="flex flex-col items-center justify-center h-80 bg-neutral-50 border-2 border-dashed border-ink/30 text-neutral-400 font-bold p-4 text-center">
+          <div className="flex flex-col items-center justify-center h-80 bg-neutral-50 dark:bg-neutral-900 border-2 border-dashed border-ink/30 text-neutral-400 font-bold p-4 text-center">
             <span className="mb-2 font-black text-ink text-sm">Not enough data for trends yet</span>
             <span className="text-xs text-neutral-400 font-medium max-w-xs">
               {chart2Data.length === 1
-                ? 'One scrape done — scrape again in 24h+ to unlock the trend line.'
+                ? 'One scrape recorded — scrape again in 24h+ to unlock the trend line.'
                 : 'Run the first scrape with ↻ Refresh Listings to start collecting data.'}
             </span>
           </div>
@@ -173,11 +189,11 @@ export default function PriceChart({ listings, history, historyBeds, setHistoryB
           <div className="w-full h-80">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={chart2Data} margin={{ top: 10, right: 20, left: 10, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e5e5e5" />
-                <XAxis dataKey="date" tick={{ fill: '#111111', fontWeight: 'bold' }} stroke="#111111" />
-                <YAxis tickFormatter={(val) => `R ${val/1000}k`} tick={{ fill: '#111111', fontWeight: 'bold' }} stroke="#111111" />
+                <CartesianGrid strokeDasharray="3 3" stroke={gridColor} />
+                <XAxis dataKey="date" tick={{ fill: textColor, fontWeight: 'bold' }} stroke={textColor} />
+                <YAxis tickFormatter={(val) => `R ${val/1000}k`} tick={{ fill: textColor, fontWeight: 'bold' }} stroke={textColor} />
                 <Tooltip content={<CustomTooltip />} />
-                <Legend wrapperStyle={{ fontWeight: 'bold', textTransform: 'uppercase', fontSize: '11px', paddingTop: '10px' }} />
+                <Legend wrapperStyle={{ fontWeight: 'bold', textTransform: 'uppercase', fontSize: '11px', paddingTop: '10px', color: textColor }} />
                 {SUBURBS_LIST.map(sub => (
                   <Line
                     key={sub}
@@ -200,29 +216,36 @@ export default function PriceChart({ listings, history, historyBeds, setHistoryB
         <h2 className="inline-block bg-ink text-paper text-xs font-black uppercase tracking-wider px-2.5 py-1 mb-6">
           Unit size vs Pricing Spread
         </h2>
-        <div className="w-full h-80">
-          <ResponsiveContainer width="100%" height="100%">
-            <ScatterChart margin={{ top: 10, right: 20, left: 10, bottom: 5 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#e5e5e5" />
-              <XAxis type="number" dataKey="x" name="Size" unit="m²" tick={{ fill: '#111111', fontWeight: 'bold' }} stroke="#111111" />
-              <YAxis type="number" dataKey="y" name="Price" tickFormatter={(val) => `R ${val/1000}k`} tick={{ fill: '#111111', fontWeight: 'bold' }} stroke="#111111" />
-              <ZAxis type="category" dataKey="name" name="Name" />
-              <Tooltip content={<ScatterTooltip />} cursor={{ strokeDasharray: '3 3', stroke: '#111' }} />
-              <Legend wrapperStyle={{ fontWeight: 'bold', textTransform: 'uppercase', fontSize: '11px', paddingTop: '10px' }} />
-              {SUBURBS_LIST.filter(sub => scatterData[sub].length > 0).map(sub => (
-                <Scatter
-                  key={sub}
-                  name={sub}
-                  data={scatterData[sub]}
-                  fill={SUBURB_COLORS[sub]}
-                  stroke="#111111"
-                  strokeWidth={1.5}
-                  line={false}
-                />
-              ))}
-            </ScatterChart>
-          </ResponsiveContainer>
-        </div>
+        {totalScatterPoints === 0 ? (
+          <div className="flex flex-col items-center justify-center h-80 bg-neutral-50 dark:bg-neutral-900 border-2 border-dashed border-ink/30 text-neutral-400 font-bold p-4 text-center">
+            <span className="font-black text-ink text-sm mb-1">No size (m²) data available for scatter plot</span>
+            <span className="text-xs text-neutral-400 font-medium">None of the filtered listings reported a floor area in m².</span>
+          </div>
+        ) : (
+          <div className="w-full h-80">
+            <ResponsiveContainer width="100%" height="100%">
+              <ScatterChart margin={{ top: 10, right: 20, left: 10, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke={gridColor} />
+                <XAxis type="number" dataKey="x" name="Size" unit="m²" tick={{ fill: textColor, fontWeight: 'bold' }} stroke={textColor} />
+                <YAxis type="number" dataKey="y" name="Price" tickFormatter={(val) => `R ${val/1000}k`} tick={{ fill: textColor, fontWeight: 'bold' }} stroke={textColor} />
+                <ZAxis type="category" dataKey="name" name="Name" />
+                <Tooltip content={<ScatterTooltip />} cursor={{ strokeDasharray: '3 3', stroke: textColor }} />
+                <Legend wrapperStyle={{ fontWeight: 'bold', textTransform: 'uppercase', fontSize: '11px', paddingTop: '10px', color: textColor }} />
+                {SUBURBS_LIST.filter(sub => scatterData[sub].length > 0).map(sub => (
+                  <Scatter
+                    key={sub}
+                    name={sub}
+                    data={scatterData[sub]}
+                    fill={SUBURB_COLORS[sub]}
+                    stroke="#111111"
+                    strokeWidth={1.5}
+                    line={false}
+                  />
+                ))}
+              </ScatterChart>
+            </ResponsiveContainer>
+          </div>
+        )}
       </div>
     </div>
   );

@@ -1,7 +1,13 @@
+const COMMERCIAL_KEYWORDS = [
+  'commercial', 'office', 'retail', 'industrial', 'warehouse',
+  'storage', 'parking', 'farm', 'land', 'business', 'showroom', 'factory'
+];
+
 const RESIDENTIAL_ALLOWLIST = [
   'apartment / flat', 'flat', 'apartment', 'house', 'townhouse',
   'cluster', 'duplex', 'penthouse', 'studio', 'maisonette',
-  'garden cottage', 'cottage', 'estate', 'residential estate'
+  'garden cottage', 'cottage', 'estate', 'residential estate',
+  'loft', 'simplex', 'bachelor', 'room'
 ];
 
 function isValid(raw) {
@@ -11,22 +17,56 @@ function isValid(raw) {
   const priceText = raw.pricing?.price_text;
   const propType = raw.property?.property_type;
   
-  // 1. Check if price is present and clean, or check POA
+  // 1. Check if price is present, positive, and not POA
   if (!price || priceText === 'POA') return false;
   
   // 2. Sanity check: Price must be positive and below ceiling
-  if (price <= 0 || price > 150000) return false;
+  if (typeof price !== 'number' || price <= 0 || price > 150000) return false;
   
   // 3. Enforce residential types
-  if (!propType) return false;
+  if (!propType || typeof propType !== 'string') return false;
   const typeLower = propType.toLowerCase().trim();
-  if (!RESIDENTIAL_ALLOWLIST.includes(typeLower)) return false;
   
-  return true;
+  // Explicitly drop commercial listings
+  if (COMMERCIAL_KEYWORDS.some(kw => typeLower.includes(kw))) {
+    return false;
+  }
+  
+  // Allow if exact match in allowlist OR contains common residential keywords
+  const isAllowed = RESIDENTIAL_ALLOWLIST.includes(typeLower) ||
+    typeLower.includes('apartment') ||
+    typeLower.includes('flat') ||
+    typeLower.includes('house') ||
+    typeLower.includes('townhouse') ||
+    typeLower.includes('studio') ||
+    typeLower.includes('cottage') ||
+    typeLower.includes('duplex') ||
+    typeLower.includes('simplex') ||
+    typeLower.includes('loft') ||
+    typeLower.includes('penthouse') ||
+    typeLower.includes('cluster') ||
+    typeLower.includes('maisonette');
+  
+  return isAllowed;
 }
 
+const MONTH_MAP = {
+  JAN: 0, JANUARY: 0,
+  FEB: 1, FEBRUARY: 1,
+  MAR: 2, MARCH: 2,
+  APR: 3, APRIL: 3,
+  MAY: 4,
+  JUN: 5, JUNE: 5,
+  JUL: 6, JULY: 6,
+  AUG: 7, AUGUST: 7,
+  SEP: 8, SEPTEMBER: 8,
+  OCT: 9, OCTOBER: 9,
+  NOV: 10, NOVEMBER: 10,
+  DEC: 11, DECEMBER: 11
+};
+
 function parseAvailableDate(status) {
-  if (!status) return null;
+  if (!status || typeof status !== 'string') return null;
   const s = status.toUpperCase().trim();
   
   if (
@@ -40,31 +80,30 @@ function parseAvailableDate(status) {
     return new Date().toISOString().split('T')[0];
   }
   
-  const match = s.match(/AVAILABLE:\s*(\d{1,2})\s*([A-Z]{3})/);
+  // Matches "AVAILABLE: 01 JUL", "AVAILABLE 1 JULY", "AVAILABLE FROM 15 AUG 2026", "01 JUL 2026", etc.
+  const match = s.match(/(?:AVAILABLE(?::|\s+FROM|\s+AS\s+OF)?\s*)?(\d{1,2})\s+([A-Z]{3,9})(?:\s+(\d{4}))?/i);
   if (match) {
     const day = parseInt(match[1], 10);
-    const monthStr = match[2];
+    const monthKey = match[2].toUpperCase();
+    const explicitYear = match[3] ? parseInt(match[3], 10) : null;
     
-    const months = {
-      JAN: 0, FEB: 1, MAR: 2, APR: 3, MAY: 4, JUN: 5,
-      JUL: 6, AUG: 7, SEP: 8, OCT: 9, NOV: 10, DEC: 11
-    };
-    
-    const month = months[monthStr];
-    if (month !== undefined) {
+    const month = MONTH_MAP[monthKey];
+    if (month !== undefined && day >= 1 && day <= 31) {
       const now = new Date();
-      let year = now.getFullYear();
+      let year = explicitYear || now.getFullYear();
       
-      // If the target month has already passed in the current year, it must be for next year
-      if (month < now.getMonth()) {
+      // If no explicit year and target month has already passed in the current year, it must be for next year
+      if (!explicitYear && month < now.getMonth()) {
         year += 1;
       }
       
       const d = new Date(year, month, day);
-      const yyyy = d.getFullYear();
-      const mm = String(d.getMonth() + 1).padStart(2, '0');
-      const dd = String(d.getDate()).padStart(2, '0');
-      return `${yyyy}-${mm}-${dd}`;
+      if (!isNaN(d.getTime())) {
+        const yyyy = d.getFullYear();
+        const mm = String(d.getMonth() + 1).padStart(2, '0');
+        const dd = String(d.getDate()).padStart(2, '0');
+        return `${yyyy}-${mm}-${dd}`;
+      }
     }
   }
   
@@ -74,14 +113,15 @@ function parseAvailableDate(status) {
 function extractBedrooms(title, description, rawBedrooms) {
   if (rawBedrooms !== undefined && rawBedrooms !== null) {
     const val = parseFloat(rawBedrooms);
-    if (!isNaN(val)) return val;
+    if (!isNaN(val) && val >= 0 && val <= 20) return val;
   }
   const text = ((title || '') + ' ' + (description || '')).toLowerCase();
   
   // Look for decimals like "0.5 bedroom" or "1.5 beds"
   const bedMatch = text.match(/(\d+(?:\.\d+)?)\s*(?:bedroom|bed|bd)/i);
   if (bedMatch) {
-    return parseFloat(bedMatch[1]);
+    const parsed = parseFloat(bedMatch[1]);
+    if (!isNaN(parsed) && parsed >= 0 && parsed <= 20) return parsed;
   }
   
   if (text.includes('studio') || text.includes('bachelor')) {
@@ -94,13 +134,14 @@ function extractBedrooms(title, description, rawBedrooms) {
 function extractBathrooms(title, description, rawBathrooms) {
   if (rawBathrooms !== undefined && rawBathrooms !== null) {
     const val = parseFloat(rawBathrooms);
-    if (!isNaN(val)) return val;
+    if (!isNaN(val) && val >= 0 && val <= 20) return val;
   }
   const text = ((title || '') + ' ' + (description || '')).toLowerCase();
   
   const bathMatch = text.match(/(\d+(?:\.\d+)?)\s*(?:bathroom|bath|ba)/i);
   if (bathMatch) {
-    return parseFloat(bathMatch[1]);
+    const parsed = parseFloat(bathMatch[1]);
+    if (!isNaN(parsed) && parsed >= 0 && parsed <= 20) return parsed;
   }
   
   return null;
@@ -109,7 +150,7 @@ function extractBathrooms(title, description, rawBathrooms) {
 function extractSize(title, description, rawSize) {
   if (rawSize !== undefined && rawSize !== null) {
     const val = parseInt(String(rawSize).replace(/[\s,]/g, ''), 10);
-    if (!isNaN(val)) return val;
+    if (!isNaN(val) && val >= 10 && val <= 3000) return val;
   }
   const text = ((title || '') + ' ' + (description || '')).toLowerCase();
   
@@ -118,7 +159,7 @@ function extractSize(title, description, rawSize) {
   if (sizeMatch) {
     const cleaned = sizeMatch[1].replace(/[\s,]/g, '');
     const val = parseInt(cleaned, 10);
-    if (!isNaN(val)) return val;
+    if (!isNaN(val) && val >= 10 && val <= 3000) return val;
   }
   
   return null;
@@ -140,24 +181,24 @@ function extractFurnished(title, description, rawFurnished) {
 }
 
 function normaliseListing(raw) {
-  const price = raw.pricing?.price;
+  const price = typeof raw.pricing?.price === 'number' ? raw.pricing.price : parseInt(raw.pricing?.price, 10) || 0;
   const title = raw.entity?.title || '';
   const desc = raw.entity?.description || '';
   
   const bedrooms = extractBedrooms(title, desc, raw.property?.bedrooms);
   const bathrooms = extractBathrooms(title, desc, raw.property?.bathrooms);
   const size = extractSize(title, desc, raw.property?.floor_area?.value);
-  const pricePerM2 = size ? Math.round(price / size) : null;
+  const pricePerM2 = (size && size > 0 && price > 0) ? Math.round(price / size) : null;
   
   const rawType = raw.property?.property_type || '';
   let propType = 'other';
   
   const typeLower = rawType.toLowerCase().trim();
-  if (['apartment / flat', 'apartment', 'flat', 'studio'].includes(typeLower)) {
+  if (typeLower.includes('apartment') || typeLower.includes('flat') || typeLower.includes('studio') || typeLower.includes('loft')) {
     propType = 'apartment';
-  } else if (typeLower === 'house') {
+  } else if (typeLower.includes('house') || typeLower.includes('cottage')) {
     propType = 'house';
-  } else if (['townhouse', 'cluster', 'duplex', 'maisonette'].includes(typeLower)) {
+  } else if (typeLower.includes('townhouse') || typeLower.includes('cluster') || typeLower.includes('duplex') || typeLower.includes('maisonette') || typeLower.includes('simplex')) {
     propType = 'townhouse';
   }
   
@@ -185,7 +226,7 @@ function normaliseListing(raw) {
 }
 
 function medianOf(nums) {
-  const arr = nums.filter(n => n !== null && n !== undefined && !isNaN(n)).sort((a, b) => a - b);
+  const arr = nums.filter(n => n !== null && n !== undefined && !isNaN(n) && typeof n === 'number').sort((a, b) => a - b);
   if (arr.length === 0) return null;
   const mid = Math.floor(arr.length / 2);
   return arr.length % 2 !== 0 ? arr[mid] : Math.round((arr[mid - 1] + arr[mid]) / 2);
@@ -208,10 +249,10 @@ function computeValueScores(normalisedListings) {
   const suburbBedPrices = {};
 
   normalisedListings.forEach(item => {
-    if (item.price_per_m2 !== null && item.price_per_m2 !== undefined) {
+    if (item.price_per_m2 !== null && item.price_per_m2 !== undefined && item.price_per_m2 > 0) {
       (suburbPpm2[item.suburb] ||= []).push(item.price_per_m2);
     }
-    if (item.price !== null && item.price !== undefined && item.bedrooms !== null && item.bedrooms !== undefined) {
+    if (item.price !== null && item.price !== undefined && item.price > 0 && item.bedrooms !== null && item.bedrooms !== undefined) {
       (suburbBedPrices[`${item.suburb}_beds_${item.bedrooms}`] ||= []).push(item.price);
     }
   });
@@ -224,17 +265,23 @@ function computeValueScores(normalisedListings) {
 
   // 2. Score each listing — prefer the price/m² basis, fall back to suburb+beds price.
   return normalisedListings.map(item => {
-    if (item.price_per_m2 !== null && item.price_per_m2 !== undefined) {
+    if (item.price_per_m2 !== null && item.price_per_m2 !== undefined && item.price_per_m2 > 0) {
       const med = suburbPpm2Median[item.suburb];
-      if (med) {
-        return { ...item, value_score: parseFloat((med / item.price_per_m2).toFixed(2)) };
+      if (med && med > 0) {
+        const score = parseFloat((med / item.price_per_m2).toFixed(2));
+        if (isFinite(score) && score > 0) {
+          return { ...item, value_score: score };
+        }
       }
     }
 
-    if (item.price !== null && item.price !== undefined && item.bedrooms !== null && item.bedrooms !== undefined) {
+    if (item.price !== null && item.price !== undefined && item.price > 0 && item.bedrooms !== null && item.bedrooms !== undefined) {
       const med = suburbBedMedian[`${item.suburb}_beds_${item.bedrooms}`];
-      if (med) {
-        return { ...item, value_score: parseFloat((med / item.price).toFixed(2)) };
+      if (med && med > 0) {
+        const score = parseFloat((med / item.price).toFixed(2));
+        if (isFinite(score) && score > 0) {
+          return { ...item, value_score: score };
+        }
       }
     }
 
@@ -245,6 +292,10 @@ function computeValueScores(normalisedListings) {
 module.exports = {
   isValid,
   parseAvailableDate,
+  extractBedrooms,
+  extractBathrooms,
+  extractSize,
+  extractFurnished,
   normaliseListing,
   computeValueScores
 };

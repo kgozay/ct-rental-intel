@@ -9,14 +9,14 @@ export default function SuburbComparison({ listings, history, onDrillDown }) {
       const goodValue = suburbListings.filter(l => l.value_score > 1.15).length;
 
       // Median rent (overall median price)
-      const prices = suburbListings.map(l => l.price).filter(Boolean).sort((a, b) => a - b);
+      const prices = suburbListings.map(l => l.price).filter(p => typeof p === 'number' && p > 0).sort((a, b) => a - b);
       const mid = Math.floor(prices.length / 2);
       const medianRent = prices.length === 0 ? null
         : prices.length % 2 !== 0 ? prices[mid]
         : Math.round((prices[mid - 1] + prices[mid]) / 2);
 
       // Median R/m² — computed locally from the listings prop
-      const pm2 = suburbListings.map(l => l.price_per_m2).filter(Boolean).sort((a, b) => a - b);
+      const pm2 = suburbListings.map(l => l.price_per_m2).filter(r => typeof r === 'number' && r > 0).sort((a, b) => a - b);
       const midPm2 = Math.floor(pm2.length / 2);
       const medianPrice = pm2.length === 0 ? null
         : pm2.length % 2 !== 0 ? pm2[midPm2]
@@ -52,10 +52,10 @@ export default function SuburbComparison({ listings, history, onDrillDown }) {
     <div>
       <div className="border-[3px] border-ink bg-paper shadow-[6px_6px_0_#111111] p-5 mb-7 rounded-none">
         <h2 className="inline-block bg-ink text-paper text-xs font-black uppercase tracking-wider px-2.5 py-1 mb-1">
-          Suburbs
+          Suburb Comparison Matrix
         </h2>
         <p className="text-xs text-neutral-500 font-bold mt-2 mb-0">
-          Side-by-side snapshot based on active filters. Sorted cheapest first.
+          Side-by-side snapshot based on active filters. Sorted from most affordable median rent.
         </p>
       </div>
 
@@ -71,7 +71,7 @@ export default function SuburbComparison({ listings, history, onDrillDown }) {
                 <div className="font-black text-sm uppercase tracking-wide leading-tight">
                   {suburb}
                 </div>
-                <div className="text-[0.6875rem] font-bold text-paper/50 mt-0.5">
+                <div className="text-[0.6875rem] font-bold text-paper/60 mt-0.5">
                   {count} listing{count !== 1 ? 's' : ''}
                 </div>
               </div>
@@ -127,7 +127,7 @@ export default function SuburbComparison({ listings, history, onDrillDown }) {
                   />
                 </div>
                 <div className="text-[0.625rem] font-bold text-neutral-400 mt-1">
-                  {Math.round((goodValue / count) * 100)}% good value
+                  {Math.round((goodValue / count) * 100)}% good value ratio
                 </div>
               </div>
             )}

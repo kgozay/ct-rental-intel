@@ -1,19 +1,54 @@
+function generateHeuristicVerdict(listing, suburbMedianPrice) {
+  const price = listing.price || 0;
+  const suburb = listing.suburb || 'this area';
+  const delta = suburbMedianPrice != null ? suburbMedianPrice - price : null;
+  const absDelta = delta != null ? Math.abs(delta) : null;
+  
+  let priceComment;
+  if (delta != null && absDelta > 0) {
+    const pct = Math.round((absDelta / suburbMedianPrice) * 100);
+    if (delta > 0) {
+      priceComment = `Priced R${absDelta.toLocaleString('en-ZA')} (${pct}%) below the ${suburb} median (R${suburbMedianPrice.toLocaleString('en-ZA')}/mo), offering exceptional value for renters.`;
+    } else {
+      priceComment = `Priced R${absDelta.toLocaleString('en-ZA')} (${pct}%) above the ${suburb} median (R${suburbMedianPrice.toLocaleString('en-ZA')}/mo), placing it in the premium tier.`;
+    }
+  } else if (suburbMedianPrice != null) {
+    priceComment = `Priced right at the ${suburb} median of R${suburbMedianPrice.toLocaleString('en-ZA')}/mo.`;
+  } else {
+    priceComment = `Listed at R${price.toLocaleString('en-ZA')}/mo in ${suburb}.`;
+  }
+
+  let detailComment = '';
+  if (listing.price_per_m2 && listing.size_m2) {
+    detailComment = ` Features ${listing.size_m2}m² of floor space at R${listing.price_per_m2}/m² with ${listing.furnished ? 'furnished' : 'unfurnished'} finishes.`;
+  } else if (listing.bedrooms != null) {
+    detailComment = ` Offers a ${listing.bedrooms}-bedroom layout with ${listing.furnished ? 'furnished' : 'unfurnished'} interior.`;
+  }
+
+  const availComment = listing.available_date
+    ? ` Available for occupation from ${listing.available_date}.`
+    : ' Ready for immediate occupation.';
+
+  return `${priceComment}${detailComment}${availComment}`.trim();
+}
+
 module.exports = async function handler(req, res) {
   if (req.method !== 'POST') {
     res.setHeader('Allow', ['POST']);
     return res.status(405).json({ error: `Method ${req.method} not allowed` });
   }
 
-  const GEMINI_KEY = process.env.GEMINI_API_KEY;
-  if (!GEMINI_KEY) {
-    return res.status(200).json({ verdict: null });
-  }
-
   try {
     const { listing = {}, suburbMedianPrice } = req.body;
+    const GEMINI_KEY = process.env.GEMINI_API_KEY;
+
+    if (!GEMINI_KEY) {
+      const verdict = generateHeuristicVerdict(listing, suburbMedianPrice);
+      return res.status(200).json({ verdict, fallback: true });
+    }
 
     const priceDiff = suburbMedianPrice != null
-      ? Math.abs(listing.price - suburbMedianPrice)
+      ? Math.abs((listing.price || 0) - suburbMedianPrice)
       : null;
     const direction = suburbMedianPrice != null
       ? (listing.price < suburbMedianPrice ? 'below' : listing.price > suburbMedianPrice ? 'above' : 'at')
@@ -42,19 +77,28 @@ module.exports = async function handler(req, res) {
       generationConfig: { temperature: 0.3, maxOutputTokens: 120 },
     };
 
-    const response = await fetch(geminiUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
+    try {
+      const response = await fetch(geminiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(8000)
+      });
 
-    if (!response.ok) {
-      return res.status(200).json({ verdict: null });
+      if (response.ok) {
+        const result = await response.json();
+        const verdict = result.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+        if (verdict) {
+          return res.status(200).json({ verdict });
+        }
+      }
+    } catch (apiErr) {
+      console.warn("Verdict Gemini API call timed out or failed:", apiErr.message);
     }
 
-    const result = await response.json();
-    const verdict = result.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || null;
-    return res.status(200).json({ verdict });
+    const fallbackVerdict = generateHeuristicVerdict(listing, suburbMedianPrice);
+    return res.status(200).json({ verdict: fallbackVerdict, fallback: true });
+
   } catch (err) {
     console.error('Verdict API error:', err);
     return res.status(200).json({ verdict: null });

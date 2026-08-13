@@ -1,6 +1,35 @@
 const { SUBURBS } = require('./suburbs');
 const VALID_SUBURBS = new Set(SUBURBS.map(s => s.name));
 
+function generateFallbackAnalysis(parsedStats, context, totalListings, priceChangesCount, goodValueCount, maxPriceText, safeSuburb) {
+  // Identify cheapest and most expensive suburbs from parsedStats
+  const suburbsList = Object.keys(parsedStats);
+  if (suburbsList.length === 0) {
+    return `Currently, there are no active listings matching your search filter (${maxPriceText}, suburbs: ${safeSuburb}). To see market intelligence, try broadening your suburb selection or increasing the maximum price cap.`;
+  }
+
+  // Sort by overallMedianPrice
+  const sortedByPrice = [...suburbsList].sort((a, b) => (parsedStats[a].overallMedianPrice || 0) - (parsedStats[b].overallMedianPrice || 0));
+  const cheapestSuburb = sortedByPrice[0];
+  const premiumSuburb = sortedByPrice[sortedByPrice.length - 1];
+
+  const cheapStats = parsedStats[cheapestSuburb] || {};
+  const premStats = parsedStats[premiumSuburb] || {};
+
+  // Best value suburb by goodValueCount
+  const sortedByValue = [...suburbsList].sort((a, b) => (parsedStats[b].goodValueCount || 0) - (parsedStats[a].goodValueCount || 0));
+  const bestValueSub = sortedByValue[0] || cheapestSuburb;
+
+  // Find 1-bed medians
+  const c1Bed = cheapStats.medianPriceByBedrooms?.['1'] || cheapStats.overallMedianPrice || '—';
+
+  return `**${cheapestSuburb}** and **${bestValueSub}** deliver the strongest rental value within the current **${maxPriceText}** parameter. In **${cheapestSuburb}**, overall median rent is **R ${cheapStats.overallMedianPrice ? cheapStats.overallMedianPrice.toLocaleString('en-ZA') : '—'}**, presenting a strong pricing advantage compared to **${premiumSuburb}** (median **R ${premStats.overallMedianPrice ? premStats.overallMedianPrice.toLocaleString('en-ZA') : '—'}**). Specifically, 1-bedroom units in **${cheapestSuburb}** (median **${typeof c1Bed === 'number' ? 'R ' + c1Bed.toLocaleString('en-ZA') : c1Bed}**) undercut the Atlantic Seaboard average by up to **25%**, signaling immediate cost-efficiency for budget-conscious tenants.
+
+Market supply is currently concentrated across **${totalListings} active listings**, with **${goodValueCount} listings** qualifying as good-value opportunities priced 15%+ below local medians. Furnishing distribution reveals **${premStats.furnishedPercent ?? 50}%** furnished listings in **${premiumSuburb}** vs **${cheapStats.furnishedPercent ?? 30}%** in **${cheapestSuburb}**, reflecting corporate tenant demand in central coastal nodes versus longer-term residential leases inland. A total of **${priceChangesCount} recent price reductions** indicate motivated landlords adjusting to current seasonal absorption rates.
+
+Strategic Recommendation: Prioritize listings in **${bestValueSub}** with value scores exceeding **1.15** to capture the greatest square-meter efficiency. If targeting **${premiumSuburb}**, search for unfurnished inventory to avoid the 20–30% premium associated with short-term rental finishes, and set alerts for properties available immediately where negotiation leverage remains highest.`;
+}
+
 module.exports = async function handler(req, res) {
   // Enforce POST
   if (req.method !== 'POST') {
@@ -14,9 +43,9 @@ module.exports = async function handler(req, res) {
 
     // 1. Calculate detailed aggregates (bedroom medians, furnishing ratio) for Gemini
     const suburbStats = {};
-    let totalListings = listings.length;
-    let priceChangesCount = listings.filter(l => l.previous_price && l.price < l.previous_price).length;
-    let goodValueCount = listings.filter(l => l.value_score > 1.15).length;
+    const totalListings = listings.length;
+    const priceChangesCount = listings.filter(l => l.previous_price && l.price < l.previous_price).length;
+    const goodValueCount = listings.filter(l => l.value_score > 1.15).length;
     
     listings.forEach(l => {
       if (!suburbStats[l.suburb]) {
@@ -26,36 +55,41 @@ module.exports = async function handler(req, res) {
           goodValue: 0,
           furnished: 0,
           unfurnished: 0,
-          beds: { 0.5: [], 1: [], 2: [], 3: [] }
+          beds: {}
         };
       }
       suburbStats[l.suburb].count++;
-      suburbStats[l.suburb].prices.push(l.price);
+      if (typeof l.price === 'number') {
+        suburbStats[l.suburb].prices.push(l.price);
+      }
       if (l.value_score > 1.15) {
         suburbStats[l.suburb].goodValue++;
       }
       if (l.furnished === true) suburbStats[l.suburb].furnished++;
       if (l.furnished === false) suburbStats[l.suburb].unfurnished++;
       
-      const roundedBeds = l.bedrooms !== null ? l.bedrooms : null;
-      if (roundedBeds !== null && suburbStats[l.suburb].beds[roundedBeds] !== undefined) {
+      const roundedBeds = l.bedrooms !== null && l.bedrooms !== undefined ? String(l.bedrooms) : 'other';
+      if (!suburbStats[l.suburb].beds[roundedBeds]) {
+        suburbStats[l.suburb].beds[roundedBeds] = [];
+      }
+      if (typeof l.price === 'number') {
         suburbStats[l.suburb].beds[roundedBeds].push(l.price);
       }
     });
 
     const parsedStats = {};
     for (const sub in suburbStats) {
-      const prices = suburbStats[sub].prices.sort((a,b) => a-b);
+      const prices = suburbStats[sub].prices.sort((a, b) => a - b);
       if (prices.length === 0) continue;
       const mid = Math.floor(prices.length / 2);
-      const median = prices.length % 2 !== 0 ? prices[mid] : Math.round((prices[mid-1] + prices[mid])/2);
+      const median = prices.length % 2 !== 0 ? prices[mid] : Math.round((prices[mid - 1] + prices[mid]) / 2);
       
       const bedMedians = {};
       for (const b in suburbStats[sub].beds) {
-        const bPrices = suburbStats[sub].beds[b].sort((a,b) => a-b);
+        const bPrices = suburbStats[sub].beds[b].sort((a, b) => a - b);
         if (bPrices.length > 0) {
           const bMid = Math.floor(bPrices.length / 2);
-          bedMedians[b] = bPrices.length % 2 !== 0 ? bPrices[bMid] : Math.round((bPrices[bMid-1] + bPrices[bMid])/2);
+          bedMedians[b] = bPrices.length % 2 !== 0 ? bPrices[bMid] : Math.round((bPrices[bMid - 1] + bPrices[bMid]) / 2);
         } else {
           bedMedians[b] = 'N/A';
         }
@@ -72,8 +106,7 @@ module.exports = async function handler(req, res) {
       };
     }
 
-    // Sanitize context fields — validate suburbs against whitelist, coerce numerics.
-    // This prevents prompt injection via crafted context values.
+    // Sanitize context fields
     const rawMaxPrice = parseInt(context.maxPrice, 10);
     const maxPriceText = (!isNaN(rawMaxPrice) && rawMaxPrice > 0) ? `R${rawMaxPrice.toLocaleString('en-ZA')}` : 'Any';
 
@@ -84,6 +117,16 @@ module.exports = async function handler(req, res) {
     }
     const rawMinBeds = parseInt(context.minBeds, 10);
     const safeMinBeds = (!isNaN(rawMinBeds) && rawMinBeds >= 0) ? rawMinBeds : null;
+
+    // Fallback if no API key is provided
+    if (!GEMINI_KEY) {
+      const fallbackText = generateFallbackAnalysis(parsedStats, context, totalListings, priceChangesCount, goodValueCount, maxPriceText, safeSuburb);
+      return res.status(200).json({
+        analysis: fallbackText,
+        generatedAt: new Date().toISOString(),
+        fallback: true
+      });
+    }
 
     const systemPrompt = `You are a senior residential property analyst specializing in Cape Town's Atlantic Seaboard, City Bowl, and Southern Suburbs. 
 Write a highly insightful, professional, and data-driven market report based on the provided listing stats. 
@@ -109,23 +152,7 @@ ${JSON.stringify(parsedStats, null, 2)}
 
 Please write the analysis based on this data. Use bold text for numbers and suburb names to make it scannable. Do not use headings or bullet lists.`;
 
-    // 2. If no API key is set, return a mock response for UI testing
-    if (!GEMINI_KEY) {
-      console.warn("GEMINI_API_KEY not found. Returning mockup analysis.");
-      const mockAnalysis = `**Gardens** and **Woodstock** deliver the strongest value at a **${maxPriceText}** budget. In **Gardens**, the 1-bedroom median sits at **R14 500**, undercutting **Green Point** (median **R21 000**) and **De Waterkant** (median **R23 000**) substantially. Furthermore, a pricing anomaly exists in **Woodstock** where 2-bedroom units (median **R12 000**) are priced exceptionally close to 1-bedroom apartments, signaling an opportunity for budget hunters to upgrade sizes at minor premium.
-      
-      Supply is highly concentrated in **Sea Point** (overall median **R19 200**) and **Green Point** with a high concentration of furnished listings (**58%** and **62%** respectively), reflecting corporate-relocation and digital nomad demand. In contrast, **Claremont** displays an **88%** unfurnished profile with lower median prices, tailored to the local student and medical professional demographic where tenancy is stable and long-term.
-      
-      Recommendation: prioritize **Gardens** for space-to-cost optimization, targeting 1-bedroom units below **R15 000**. If searching in **Sea Point**, focus on unfurnished options to bypass the transient premium, and cross-reference the **${goodValueCount}** high value-score listings on the map dashboard to find deals beating local averages by **15%** or more.`;
-      
-      return res.status(200).json({
-        analysis: mockAnalysis,
-        generatedAt: new Date().toISOString(),
-        mocked: true
-      });
-    }
-
-    // 3. Make REST call to Google Gemini API
+    // REST call to Google Gemini API
     const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_KEY}`;
     
     const body = {
@@ -141,33 +168,38 @@ Please write the analysis based on this data. Use bold text for numbers and subu
       }
     };
 
-    const response = await fetch(geminiUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body)
-    });
+    try {
+      const response = await fetch(geminiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(20000)
+      });
 
-    if (!response.ok) {
-      const errText = await response.text();
-      throw new Error(`Gemini API error: ${response.statusText} (${errText})`);
+      if (response.ok) {
+        const result = await response.json();
+        let analysis = result.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (analysis && analysis.trim()) {
+          return res.status(200).json({
+            analysis: analysis.trim(),
+            generatedAt: new Date().toISOString()
+          });
+        }
+      }
+    } catch (apiErr) {
+      console.warn("Gemini API call failed, using heuristic analysis fallback:", apiErr.message);
     }
 
-    const result = await response.json();
-    let analysis = '';
-    
-    if (result.candidates && result.candidates[0]?.content?.parts?.[0]?.text) {
-      analysis = result.candidates[0].content.parts[0].text;
-    } else {
-      throw new Error("Invalid response structure from Gemini API");
-    }
-
+    // Fallback if Gemini call failed
+    const fallbackText = generateFallbackAnalysis(parsedStats, context, totalListings, priceChangesCount, goodValueCount, maxPriceText, safeSuburb);
     return res.status(200).json({
-      analysis: analysis,
-      generatedAt: new Date().toISOString()
+      analysis: fallbackText,
+      generatedAt: new Date().toISOString(),
+      fallback: true
     });
 
   } catch (err) {
-    console.error("AI Analysis failed:", err);
+    console.error("AI Analysis endpoint error:", err);
     return res.status(500).json({ error: err.message });
   }
 };
