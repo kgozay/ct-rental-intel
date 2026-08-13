@@ -237,7 +237,7 @@ export default function ListingDrawer({ listing, suburbMedianPrices, shortlisted
                 <div className="h-3 bg-neutral-200 rounded w-4/5" />
               </div>
             ) : verdict ? (
-              <p className="text-xs md:text-sm font-semibold text-ink leading-relaxed bg-white border-2 border-ink p-3 shadow-[2px_2px_0_#111111]">
+              <p className="text-xs md:text-sm font-semibold text-ink leading-relaxed bg-white border-2 border-ink p-3 shadow-[2px_2px_0_#111111] break-words whitespace-normal">
                 {verdict}
               </p>
             ) : (

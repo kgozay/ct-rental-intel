@@ -69,12 +69,16 @@ module.exports = async function handler(req, res) {
         : null,
     ].filter(Boolean).join(' · ');
 
-    const prompt = `You are a Cape Town rental analyst. Write exactly 1–2 sentences that give a prospective tenant a clear, honest verdict on this listing. Mention price relative to the suburb median (use percentage if meaningful), size efficiency or value, furnishing, and availability timing. Be specific and direct — no filler phrases like "it's worth noting" or "in conclusion". Listing data: ${listingContext}`;
+    const prompt = `You are a Cape Town rental analyst. Write exactly 1–2 complete sentences that give a prospective tenant a clear, concise, and honest verdict on this listing. Mention price relative to the suburb median (use percentage if meaningful), size efficiency or value, furnishing, and availability timing. Be specific and direct — no filler phrases like "it's worth noting" or "in conclusion". Do not truncate the sentences. Listing data: ${listingContext}`;
 
     const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_KEY}`;
     const body = {
       contents: [{ role: 'user', parts: [{ text: prompt }] }],
-      generationConfig: { temperature: 0.3, maxOutputTokens: 120 },
+      generationConfig: {
+        temperature: 0.2,
+        maxOutputTokens: 1024,
+        thinkingConfig: { thinkingBudget: 0 }
+      },
     };
 
     try {
@@ -87,8 +91,12 @@ module.exports = async function handler(req, res) {
 
       if (response.ok) {
         const result = await response.json();
-        const verdict = result.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
-        if (verdict) {
+        const candidate = result.candidates?.[0];
+        const verdict = candidate?.content?.parts?.[0]?.text?.trim();
+        const finishReason = candidate?.finishReason;
+
+        // Ensure verdict is complete, not cut off by max tokens, and sufficiently informative
+        if (verdict && verdict.length >= 25 && finishReason !== 'MAX_TOKENS') {
           return res.status(200).json({ verdict });
         }
       }
