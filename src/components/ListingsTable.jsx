@@ -83,13 +83,6 @@ export default function ListingsTable({ listings, filteredListings, filters, set
   const [sortField, setSortField] = useState('price');
   const [sortAsc, setSortAsc] = useState(true);
 
-  const toggleSuburb = (sub) => {
-    const updated = filters.suburbs.includes(sub)
-      ? filters.suburbs.filter(s => s !== sub)
-      : [...filters.suburbs, sub];
-    setFilters({ ...filters, suburbs: updated });
-  };
-
   const handleSort = (field) => {
     if (sortField === field) {
       setSortAsc(!sortAsc);
@@ -98,30 +91,6 @@ export default function ListingsTable({ listings, filteredListings, filters, set
       setSortAsc(field !== 'value_score' && field !== 'days');
     }
   };
-
-  // Inventory counts per suburb (from unfiltered listings)
-  const suburbCounts = useMemo(() =>
-    Object.fromEntries(SUBURBS_LIST.map(s => [s, listings.filter(l => l.suburb === s).length])),
-    [listings]
-  );
-
-  const isFiltered = useMemo(() =>
-    (filters.search && filters.search.trim() !== '') ||
-    filters.suburbs.length < SUBURBS_LIST.length ||
-    filters.maxPrice < 80000 ||
-    filters.minBeds !== null ||
-    filters.furnished !== null ||
-    filters.goodValueOnly ||
-    filters.priceDropOnly ||
-    filters.availableBefore !== '' ||
-    filters.shortlistOnly,
-    [filters]
-  );
-
-  const availableBeforeCount = useMemo(() => {
-    if (!filters.availableBefore) return 0;
-    return listings.filter(l => l.available_date && l.available_date <= filters.availableBefore).length;
-  }, [listings, filters.availableBefore]);
 
   const sortedListings = useMemo(() => [...filteredListings].sort((a, b) => {
     // Helper to compare values while keeping nulls at the end regardless of direction
@@ -187,214 +156,25 @@ export default function ListingsTable({ listings, filteredListings, filters, set
 
   return (
     <div className="tableview">
-      {/* FILTER & SEARCH PANEL */}
-      <details open className="border-2 border-ink bg-paper p-5 mb-7 rounded-none group">
-        <summary className="list-none flex items-center justify-between cursor-pointer select-none focus:outline-none">
-          <div className="flex items-center gap-3">
-            <h2 className="inline-block bg-ink text-paper text-xs font-black uppercase tracking-wider px-2.5 py-1 m-0">
-              Filters & Search
-            </h2>
-            {isFiltered && (
-              <button
-                onClick={(e) => { e.preventDefault(); setFilters(DEFAULT_FILTERS); }}
-                className="border-2 border-ink bg-white text-ink text-[0.6875rem] font-black uppercase px-2 py-0.5 hover:bg-yellow transition-colors focus:outline-none cursor-pointer"
-              >
-                Reset all
-              </button>
-            )}
-          </div>
-          <span className="font-extrabold text-xs text-ink/50 group-open:before:content-['▲_'] before:content-['▼_'] select-none">
-            Toggle
-          </span>
-        </summary>
-
-        <div className="flex flex-col mt-4 gap-0">
-          {/* Row 0 — Quick Search */}
-          <div className="pb-4">
-            <div className="relative max-w-md">
-              <label htmlFor="listing-search-input" className="text-[0.6875rem] font-black uppercase tracking-wider text-ink/50 block mb-1.5">
-                Keyword Search
-              </label>
-              <div className="flex items-center">
-                <input
-                  id="listing-search-input"
-                  type="text"
-                  value={filters.search || ''}
-                  onChange={(e) => setFilters({ ...filters, search: e.target.value })}
-                  placeholder="Search street, suburb, type, agency..."
-                  className="w-full border-2 border-ink bg-white text-ink px-3 py-1.5 text-xs font-bold focus:outline-none focus:ring-2 focus:ring-blue shadow-[2px_2px_0_#111111]"
-                />
-                {filters.search && (
-                  <button
-                    onClick={() => setFilters({ ...filters, search: '' })}
-                    className="absolute right-2 text-xs font-black text-ink/60 hover:text-ink cursor-pointer px-1"
-                    aria-label="Clear search"
-                  >
-                    ✕
-                  </button>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* Row 1 — Suburbs */}
-          <div className="border-t border-ink/10 flex flex-col gap-2 py-4">
-            <div className="text-[0.6875rem] font-black uppercase tracking-wider text-ink/50">Suburb</div>
-            <div className="flex flex-wrap gap-2">
-              {SUBURBS_LIST.map(sub => {
-                const isActive = filters.suburbs.includes(sub);
-                const count = suburbCounts[sub] || 0;
-                return (
-                  <button
-                    key={sub}
-                    onClick={() => toggleSuburb(sub)}
-                    className={`border-2 border-ink px-3 py-1 text-xs font-bold cursor-pointer select-none transition-colors duration-100 ${
-                      isActive ? 'bg-ink text-paper' : 'bg-white text-ink hover:bg-neutral-100'
-                    }`}
-                    aria-pressed={isActive}
-                  >
-                    {sub}
-                    <span className={`ml-1.5 text-[0.625rem] font-black ${isActive ? 'text-paper/60' : 'text-neutral-400'}`}>
-                      {count}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Row 2 — Price · Beds · Furnished */}
-          <div className="border-t border-ink/10 flex flex-wrap items-end gap-8 py-4">
-            {/* Max Price Slider */}
-            <label className="flex flex-col gap-2">
-              <span className="text-[0.6875rem] font-black uppercase tracking-wider text-ink/50">
-                Max Price — <span className="font-extrabold text-sm text-blue">R{filters.maxPrice.toLocaleString('en-ZA')}</span>
-              </span>
-              <input
-                type="range" min="8000" max="80000" step="500"
-                value={filters.maxPrice}
-                onChange={(e) => setFilters({ ...filters, maxPrice: parseInt(e.target.value, 10) })}
-                className="w-44 accent-blue cursor-pointer h-1.5 bg-neutral-200"
-                aria-label="Maximum Price"
-              />
-            </label>
-
-            {/* Bedrooms */}
-            <div className="flex flex-col gap-2">
-              <div className="text-[0.6875rem] font-black uppercase tracking-wider text-ink/50">Beds</div>
-              <div className="flex gap-1">
-                {[{ label: 'Any', value: null }, { label: '1+', value: 1 }, { label: '2+', value: 2 }, { label: '3+', value: 3 }].map(opt => (
-                  <button
-                    key={opt.label}
-                    onClick={() => setFilters({ ...filters, minBeds: opt.value })}
-                    className={`border-2 border-ink px-3 py-1 text-xs font-bold cursor-pointer select-none transition-colors duration-100 ${
-                      filters.minBeds === opt.value ? 'bg-ink text-paper' : 'bg-white text-ink hover:bg-neutral-100'
-                    }`}
-                    aria-pressed={filters.minBeds === opt.value}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Furnished */}
-            <div className="flex flex-col gap-2">
-              <div className="text-[0.6875rem] font-black uppercase tracking-wider text-ink/50">Furnished</div>
-              <div className="flex gap-1">
-                {[{ label: 'All', value: null }, { label: 'Furnished only', value: true }].map(opt => (
-                  <button
-                    key={opt.label}
-                    onClick={() => setFilters({ ...filters, furnished: opt.value })}
-                    className={`border-2 border-ink px-3 py-1 text-xs font-bold cursor-pointer select-none transition-colors duration-100 ${
-                      filters.furnished === opt.value ? 'bg-ink text-paper' : 'bg-white text-ink hover:bg-neutral-100'
-                    }`}
-                    aria-pressed={filters.furnished === opt.value}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          {/* Row 3 — Available Before · Quick Filters */}
-          <div className="border-t border-ink/10 flex flex-wrap items-start gap-8 pt-4">
-            {/* Available before date */}
-            <div className="flex flex-col gap-2">
-              <span className="text-[0.6875rem] font-black uppercase tracking-wider text-ink/50">Available Before</span>
-              <div className="flex items-center gap-2">
-                <input
-                  type="date"
-                  value={filters.availableBefore}
-                  onChange={(e) => setFilters({ ...filters, availableBefore: e.target.value })}
-                  className="border-2 border-ink bg-white px-2 py-1 text-xs font-bold text-ink cursor-pointer accent-blue focus:outline-none"
-                  aria-label="Available Before Date"
-                />
-                {filters.availableBefore && (
-                  <>
-                    <button
-                      onClick={() => setFilters({ ...filters, availableBefore: '' })}
-                      className="border-2 border-ink bg-white px-2 py-1 text-xs font-bold text-blue hover:bg-neutral-100 focus:outline-none cursor-pointer"
-                      aria-label="Clear date filter"
-                    >
-                      Clear
-                    </button>
-                    <span className="text-[0.625rem] font-extrabold text-blue">
-                      {availableBeforeCount} listings
-                    </span>
-                  </>
-                )}
-              </div>
-            </div>
-
-            {/* Quick Filters */}
-            <div className="flex flex-col gap-2">
-              <div className="text-[0.6875rem] font-black uppercase tracking-wider text-ink/50">Quick Filters</div>
-              <div className="flex flex-wrap gap-1 items-center">
-                <button
-                  onClick={() => setFilters({ ...filters, goodValueOnly: !filters.goodValueOnly })}
-                  className={`border-2 border-ink px-3 py-1 text-xs font-bold cursor-pointer select-none transition-colors duration-100 ${
-                    filters.goodValueOnly ? 'bg-ink text-paper' : 'bg-white text-ink hover:bg-neutral-100'
-                  }`}
-                  aria-pressed={filters.goodValueOnly}
-                >
-                  Good value only
-                </button>
-                <button
-                  onClick={() => setFilters({ ...filters, priceDropOnly: !filters.priceDropOnly })}
-                  className={`border-2 border-ink px-3 py-1 text-xs font-bold cursor-pointer select-none transition-colors duration-100 ${
-                    filters.priceDropOnly ? 'bg-blue text-white border-blue' : 'bg-white text-ink hover:bg-neutral-100'
-                  }`}
-                  aria-pressed={filters.priceDropOnly}
-                >
-                  ↓ Price drops
-                </button>
-                <button
-                  onClick={() => setFilters({ ...filters, shortlistOnly: !filters.shortlistOnly })}
-                  className={`border-2 border-ink px-3 py-1 text-xs font-bold cursor-pointer select-none transition-colors duration-100 ${
-                    filters.shortlistOnly ? 'bg-ink text-paper' : 'bg-white text-ink hover:bg-neutral-100'
-                  }`}
-                  aria-pressed={filters.shortlistOnly}
-                >
-                  ♥ Shortlist only
-                </button>
-                {shortlisted.size === 0 && (
-                  <span className="text-[0.625rem] text-neutral-400 font-medium ml-1">
-                    Click ♡ on any row to save a listing to your shortlist.
-                  </span>
-                )}
-              </div>
-            </div>
-          </div>
+      {/* TABLE TOP BAR */}
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-3 px-1">
+        <div className="text-xs font-black uppercase tracking-wider text-ink/60">
+          Showing <span className="font-mono text-ink font-black">{totalCount}</span> properties
         </div>
-      </details>
+        <button
+          onClick={() => exportCsv(sortedListings)}
+          className="border-2 border-ink bg-white text-ink text-xs font-black uppercase px-3 py-1 hover:bg-yellow transition-all cursor-pointer shadow-[2px_2px_0_#111111]"
+          title="Export current filtered results as CSV"
+        >
+          ↓ Export CSV
+        </button>
+      </div>
 
       {/* DATA TABLE */}
-      <div className="overflow-x-auto border-[3px] border-ink shadow-[6px_6px_0_#111111]">
+      <div className="overflow-x-auto border-2 border-ink shadow-[3px_3px_0_#111111]">
         <table className="w-full border-collapse bg-white text-ink text-left">
           <thead>
-            <tr className="bg-ink text-paper uppercase text-xs tracking-wider border-b-[3px] border-ink">
+            <tr className="bg-ink text-paper uppercase text-xs tracking-wider border-b-2 border-ink">
               <SortHdr field="suburb" title="Sort by suburb name" sortField={sortField} sortAsc={sortAsc} handleSort={handleSort}>Suburb</SortHdr>
               <SortHdr field="property_type" title="Sort by property type" sortField={sortField} sortAsc={sortAsc} handleSort={handleSort}>Type</SortHdr>
               <SortHdr field="bedrooms" title="Sort by number of bedrooms" sortField={sortField} sortAsc={sortAsc} handleSort={handleSort}>Beds</SortHdr>
@@ -465,7 +245,7 @@ export default function ListingsTable({ listings, filteredListings, filters, set
                     style={{ animationDelay: `${animDelay}ms` }}
                     onClick={() => onSelectListing?.(item)}
                   >
-                    <td className="px-4 py-3 border-t border-neutral-200 font-bold text-xs uppercase">
+                    <td className="px-4 py-3.5 border-t border-neutral-200 font-bold text-xs uppercase">
                       <span className="flex items-center gap-1.5 flex-wrap">
                         {item.suburb}
                         {isNew && (
@@ -475,13 +255,13 @@ export default function ListingsTable({ listings, filteredListings, filters, set
                         )}
                       </span>
                     </td>
-                    <td className="px-4 py-3 border-t border-neutral-200 text-xs uppercase font-extrabold text-neutral-500">
+                    <td className="px-4 py-3.5 border-t border-neutral-200 text-xs uppercase font-extrabold text-neutral-500">
                       {item.property_type}
                     </td>
-                    <td className="px-4 py-3 border-t border-neutral-200 font-bold text-center">
+                    <td className="px-4 py-3.5 border-t border-neutral-200 font-bold text-center font-mono tabular-nums">
                       {item.bedrooms !== null ? `${item.bedrooms}` : '—'}
                     </td>
-                    <td className="px-4 py-3 border-t border-neutral-200 font-black">
+                    <td className="px-4 py-3.5 border-t border-neutral-200 font-black font-mono tabular-nums">
                       R{item.price.toLocaleString('en-ZA')}
                       {isPriceDrop && (
                         <span className="block text-[0.6875rem] text-blue font-extrabold mt-0.5">
@@ -489,29 +269,29 @@ export default function ListingsTable({ listings, filteredListings, filters, set
                         </span>
                       )}
                     </td>
-                    <td className="px-4 py-3 border-t border-neutral-200 text-xs font-extrabold text-neutral-600">
+                    <td className="px-4 py-3.5 border-t border-neutral-200 text-xs font-bold font-mono tabular-nums text-neutral-600">
                       {item.size_m2 ? `${item.size_m2}m²` : '—'}
                     </td>
-                    <td className="px-4 py-3 border-t border-neutral-200 font-bold">
-                      {item.price_per_m2 ? `${item.price_per_m2}` : '—'}
+                    <td className="px-4 py-3.5 border-t border-neutral-200 font-bold font-mono tabular-nums">
+                      {item.price_per_m2 ? `R${item.price_per_m2}` : '—'}
                     </td>
-                    <td className="px-4 py-3 border-t border-neutral-200">
+                    <td className="px-4 py-3.5 border-t border-neutral-200">
                       <ValueBadge score={item.value_score} />
                     </td>
-                    <td className="px-4 py-3 border-t border-neutral-200 text-xs font-bold text-neutral-600">
+                    <td className="px-4 py-3.5 border-t border-neutral-200 text-xs font-bold text-neutral-600">
                       {item.available_date
                         ? item.available_date <= new Date().toISOString().split('T')[0]
-                          ? <span className="text-lime font-black" title={`Listed available as of ${item.available_date}`}>Immediate</span>
-                          : item.available_date
+                          ? <span className="inline-flex items-center gap-1.5 text-emerald-600 font-black"><span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>Immediate</span>
+                          : <span className="font-mono text-neutral-600">{item.available_date}</span>
                         : '—'}
                     </td>
-                    <td className="px-4 py-3 border-t border-neutral-200 text-xs font-bold text-neutral-500">
+                    <td className="px-4 py-3.5 border-t border-neutral-200 text-xs font-bold font-mono tabular-nums text-neutral-500">
                       {days !== null ? `${days}d` : '—'}
                     </td>
-                    <td className="px-4 py-3 border-t border-neutral-200 text-xs truncate max-w-xs font-semibold">
+                    <td className="px-4 py-3.5 border-t border-neutral-200 text-xs truncate max-w-xs font-semibold">
                       {item.agency_name || '—'}
                     </td>
-                    <td className="px-4 py-3 border-t border-neutral-200" onClick={(e) => e.stopPropagation()}>
+                    <td className="px-4 py-3.5 border-t border-neutral-200" onClick={(e) => e.stopPropagation()}>
                       <div className="flex items-center gap-1.5">
                         <button
                           onClick={() => toggleShortlist(item.url)}

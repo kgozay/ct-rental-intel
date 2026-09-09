@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef, Suspense, lazy } from 'react';
 import { Link } from 'react-router-dom';
 import ListingsTable from './components/ListingsTable';
-import FilterSummary from './components/FilterSummary';
+import FilterBar from './components/FilterBar';
 import { SUBURBS_LIST } from './utils/suburbs';
 
 const PriceChart = lazy(() => import('./components/PriceChart'));
@@ -294,16 +294,16 @@ export default function App() {
   return (
     <div className="max-w-[1100px] mx-auto px-6 py-8">
       {/* BRAND HEADER BAR */}
-      <header className="bg-ink text-paper border-[3px] border-ink shadow-[6px_6px_0_#111111] flex flex-wrap items-center justify-between px-6 py-4.5 mb-8 rounded-none select-none">
-        <Link to="/" className="text-2xl font-black tracking-tight uppercase no-underline text-paper hover:opacity-90">
+      <header className="bg-ink text-paper border-2 border-ink shadow-[4px_4px_0_#111111] flex flex-wrap items-center justify-between px-5 py-3.5 mb-6 rounded-none select-none">
+        <Link to="/" className="text-xl md:text-2xl font-black tracking-tight uppercase no-underline text-paper hover:opacity-90">
           Cape Town Rental<span className="text-yellow">.</span>Intel
         </Link>
-        <div className="flex items-center gap-4 text-[0.8125rem] font-bold flex-wrap">
-          <Link to="/" className="opacity-70 hover:opacity-100 no-underline text-paper uppercase tracking-wider">← Home</Link>
-          <span className="opacity-80">Last scrape: {formatScrapeDate(lastScraped)}</span>
+        <div className="flex items-center gap-3 text-[0.8125rem] font-bold flex-wrap">
+          <Link to="/" className="opacity-70 hover:opacity-100 no-underline text-paper uppercase tracking-wider text-xs">← Home</Link>
+          <span className="opacity-75 text-xs">Scraped: {formatScrapeDate(lastScraped)}</span>
           <button
             onClick={() => setTheme(prev => prev === 'dark' ? 'light' : 'dark')}
-            className="border-2 border-paper bg-paper text-ink font-extrabold px-2.5 py-1 cursor-pointer hover:bg-neutral-100 transition-all select-none text-[0.8125rem] leading-none flex items-center justify-center rounded-none shadow-[2px_2px_0_#FAF6E9]"
+            className="border-2 border-paper bg-paper text-ink font-extrabold px-2.5 py-1 cursor-pointer hover:bg-neutral-100 transition-all select-none text-xs leading-none flex items-center justify-center rounded-none shadow-[2px_2px_0_#FAF6E9]"
             aria-label={theme === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
           >
             {theme === 'dark' ? '☀️ Light' : '🌙 Dark'}
@@ -311,9 +311,9 @@ export default function App() {
           <button
             onClick={handleRefresh}
             disabled={scraping}
-            className="border-3 border-ink bg-yellow text-ink font-extrabold uppercase px-[1.125rem] py-[0.6875rem] text-[0.8125rem] tracking-[0.5px] cursor-pointer transition-all duration-75 select-none hover:translate-x-[-1px] hover:translate-y-[-1px] hover:shadow-[4px_4px_0_#111111] active:translate-x-[4px] active:translate-y-[4px] active:shadow-none disabled:bg-neutral-300 disabled:text-neutral-500 disabled:cursor-not-allowed"
+            className="border-2 border-ink bg-yellow text-ink font-black uppercase px-3 py-1.5 text-xs tracking-wide cursor-pointer transition-all duration-75 select-none hover:translate-x-[-1px] hover:translate-y-[-1px] hover:shadow-[3px_3px_0_#111111] active:translate-x-[2px] active:translate-y-[2px] active:shadow-none disabled:bg-neutral-300 disabled:text-neutral-500 disabled:cursor-not-allowed"
           >
-            {scraping ? '⏳ Scraping P24 (~120s)...' : '↻ Refresh Listings'}
+            {scraping ? '⏳ Scraping P24...' : '↻ Refresh'}
           </button>
         </div>
       </header>
@@ -321,14 +321,14 @@ export default function App() {
       {/* REFRESH NOTICE BANNER */}
       {notice && (
         <div
-          className={`border-[3px] border-ink shadow-[4px_4px_0_#111111] px-5 py-3 mb-6 flex items-center justify-between font-bold text-sm ${
+          className={`border-2 border-ink shadow-[3px_3px_0_#111111] px-4 py-2.5 mb-5 flex items-center justify-between font-bold text-xs ${
             notice.type === 'error' ? 'bg-bred text-white' : 'bg-lime text-ink'
           }`}
         >
           <span>{notice.text}</span>
           <button
             onClick={() => setNotice(null)}
-            className="font-black text-base px-2 cursor-pointer hover:opacity-70"
+            className="font-black text-sm px-2 cursor-pointer hover:opacity-70"
             aria-label="Dismiss notice"
           >
             ✕
@@ -336,17 +336,22 @@ export default function App() {
         </div>
       )}
 
-      {/* ACTIVE FILTER SUMMARY STRIP */}
-      <FilterSummary filters={filters} setFilters={setFilters} />
+      {/* ERGONOMIC TOP-LEVEL FILTER BAR */}
+      <FilterBar
+        filters={filters}
+        setFilters={setFilters}
+        listings={listings}
+        shortlistedCount={shortlisted.size}
+      />
 
-      {/* DASHBOARD TAB CONTROLS */}
-      <div className="flex flex-wrap gap-3.5 mb-6 select-none" role="tablist">
+      {/* DASHBOARD NAVIGATION TAB BAR */}
+      <div className="flex flex-wrap gap-2.5 mb-5 select-none" role="tablist">
         {[
           { id: 'table', label: 'Table' },
           { id: 'charts', label: 'Charts' },
           { id: 'map', label: 'Map' },
           { id: 'compare', label: 'Suburbs' },
-          { id: 'ai', label: 'AI Analysis' }
+          { id: 'ai', label: 'AI Intelligence' }
         ].map(tab => {
           const isActive = activeTab === tab.id;
           return (
@@ -355,10 +360,10 @@ export default function App() {
               onClick={() => setActiveTab(tab.id)}
               role="tab"
               aria-selected={isActive}
-              className={`border-[3px] border-ink font-extrabold uppercase text-sm px-6 py-2.5 cursor-pointer transition-all duration-75 ${
+              className={`border-2 border-ink font-black uppercase text-xs sm:text-sm px-5 py-2 cursor-pointer transition-all duration-100 ${
                 isActive
-                  ? 'bg-blue text-white translate-x-[2px] translate-y-[2px] shadow-[2px_2px_0_#111111]'
-                  : 'bg-paper text-ink shadow-[4px_4px_0_#111111] hover:translate-x-[-1px] hover:translate-y-[-1px] hover:shadow-[5px_5px_0_#111111] active:translate-x-[2px] active:translate-y-[2px] active:shadow-[2px_2px_0_#111111]'
+                  ? 'bg-blue text-white translate-x-[1px] translate-y-[1px] shadow-[1px_1px_0_#111111]'
+                  : 'bg-paper text-ink shadow-[3px_3px_0_#111111] hover:translate-x-[-1px] hover:translate-y-[-1px] hover:shadow-[4px_4px_0_#111111] active:translate-x-[1px] active:translate-y-[1px] active:shadow-[1px_1px_0_#111111]'
               }`}
             >
               {tab.label}
@@ -367,45 +372,45 @@ export default function App() {
         })}
       </div>
 
-      {/* KEY KPI CARDS GRID */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4.5 mb-7 select-none">
-        <div className="kpi-card bg-yellow border-[3px] border-ink shadow-[4px_4px_0_#111111] p-4 rounded-none">
-          <div className="text-3xl md:text-[2.125rem] font-black line-clamp-1 leading-none text-ink">
+      {/* CALM KPI BENCHMARKS GRID */}
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3.5 mb-6 select-none">
+        <div className="kpi-card bg-yellow border-2 border-ink shadow-[3px_3px_0_#111111] p-3.5 rounded-none">
+          <div className="text-2xl md:text-3xl font-black font-mono tabular-nums leading-none text-ink">
             {filteredListings.length}
           </div>
-          <div className="text-[0.6875rem] font-black uppercase tracking-wider text-ink/70 mt-1.5">
-            Listings{isFiltered ? <span className="ml-1 opacity-60">(filtered)</span> : ''}
+          <div className="text-[0.625rem] font-black uppercase tracking-wider text-ink/70 mt-1.5">
+            Listings{isFiltered ? <span className="ml-1 opacity-70">(filtered)</span> : ''}
           </div>
         </div>
-        <div className="kpi-card bg-white border-[3px] border-ink shadow-[4px_4px_0_#111111] p-4 rounded-none">
-          <div className="text-3xl md:text-[2.125rem] font-black line-clamp-1 leading-none text-ink">
+        <div className="kpi-card bg-white border-2 border-ink shadow-[3px_3px_0_#111111] p-3.5 rounded-none">
+          <div className="text-2xl md:text-3xl font-black font-mono tabular-nums leading-none text-ink">
             {activeSuburbsCount}
           </div>
-          <div className="text-[0.6875rem] font-black uppercase tracking-wider text-ink/70 mt-1.5">
+          <div className="text-[0.625rem] font-black uppercase tracking-wider text-ink/70 mt-1.5">
             Suburbs
           </div>
         </div>
-        <div className="kpi-card bg-white border-[3px] border-ink shadow-[4px_4px_0_#111111] p-4 rounded-none">
-          <div className="text-3xl md:text-[2.125rem] font-black line-clamp-1 leading-none text-ink">
+        <div className="kpi-card bg-white border-2 border-ink shadow-[3px_3px_0_#111111] p-3.5 rounded-none">
+          <div className="text-2xl md:text-3xl font-black font-mono tabular-nums leading-none text-ink">
             {medianRate}
           </div>
-          <div className="text-[0.6875rem] font-black uppercase tracking-wider text-ink/70 mt-1.5">
+          <div className="text-[0.625rem] font-black uppercase tracking-wider text-ink/70 mt-1.5">
             Median R/m²
           </div>
         </div>
-        <div className="kpi-card bg-white border-[3px] border-ink shadow-[4px_4px_0_#111111] p-4 rounded-none">
-          <div className="text-3xl md:text-[2.125rem] font-black line-clamp-1 leading-none text-ink">
+        <div className="kpi-card bg-white border-2 border-ink shadow-[3px_3px_0_#111111] p-3.5 rounded-none">
+          <div className="text-2xl md:text-3xl font-black font-mono tabular-nums leading-none text-ink">
             {shortlisted.size > 0 ? shortlisted.size : goodValueCount}
           </div>
-          <div className="text-[0.6875rem] font-black uppercase tracking-wider text-ink/70 mt-1.5">
+          <div className="text-[0.625rem] font-black uppercase tracking-wider text-ink/70 mt-1.5">
             {shortlisted.size > 0 ? 'Shortlisted' : 'Good Value'}
           </div>
         </div>
-        <div className="kpi-card bg-lime border-[3px] border-ink shadow-[4px_4px_0_#111111] p-4 rounded-none">
-          <div className="text-xl md:text-2xl font-black leading-tight text-ink line-clamp-2">
+        <div className="kpi-card bg-lime border-2 border-ink shadow-[3px_3px_0_#111111] p-3.5 rounded-none">
+          <div className="text-lg md:text-xl font-black leading-tight text-ink line-clamp-2">
             {bestSuburb ?? '—'}
           </div>
-          <div className="text-[0.6875rem] font-black uppercase tracking-wider text-ink/70 mt-1.5">
+          <div className="text-[0.625rem] font-black uppercase tracking-wider text-ink/70 mt-1.5">
             Best Value Suburb
           </div>
         </div>

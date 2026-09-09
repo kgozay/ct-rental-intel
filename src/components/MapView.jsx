@@ -204,23 +204,23 @@ export default function MapView({ listings, theme, onSelectListing, onFilterSubu
           : '';
 
         const popupHtml = `
-          <div style="font-family:'Helvetica Neue',Arial,sans-serif;padding:2px;color:#111;min-width:180px;max-width:220px;">
+          <div style="font-family:inherit;padding:2px;color:#111;min-width:180px;max-width:230px;">
             ${imgHtml}
-            <div style="font-size:10px;font-weight:900;text-transform:uppercase;color:#666;">${esc(item.suburb)}</div>
-            <b style="font-size:12px;line-height:1.2;display:block;margin-bottom:4px;">${esc(item.address || item.suburb)}</b>
-            <div style="font-size:14px;font-weight:900;color:#2563EB;margin-bottom:3px;">
+            <div style="font-size:10px;font-weight:900;text-transform:uppercase;color:#666;letter-spacing:0.5px;">${esc(item.suburb)}</div>
+            <b style="font-size:12px;line-height:1.2;display:block;margin-bottom:4px;color:#111;">${esc(item.address || item.suburb)}</b>
+            <div style="font-size:14px;font-weight:900;font-family:monospace;color:#2563EB;margin-bottom:3px;">
               R ${item.price.toLocaleString('en-ZA')}/mo
             </div>
             ${isPriceDrop ? `<div style="font-size:10px;font-weight:800;color:#2563EB;margin-bottom:4px;">↓ was R ${item.previous_price.toLocaleString('en-ZA')}</div>` : ''}
             <div style="font-size:11px;font-weight:700;color:#444;margin-bottom:6px;">
               ${item.bedrooms != null ? `${item.bedrooms} Bed` : ''} ${item.size_m2 ? `· ${item.size_m2}m²` : ''} ${item.furnished ? '· Furnished' : ''}
             </div>
-            ${isGoodValue ? `<div style="font-size:10px;font-weight:900;background:#A3E635;border:2px solid #111;padding:1px 6px;margin-bottom:8px;display:inline-block;">GOOD VALUE (${item.value_score}x)</div>` : ''}
-            <div style="display:flex;gap:4px;">
-              <button onclick="if(window._ctRentalSelectListingUrl)window._ctRentalSelectListingUrl('${esc(item.url)}')" style="flex:1;text-align:center;border:2px solid #111;background:#FFD23F;padding:5px;font-size:10px;font-weight:900;text-transform:uppercase;color:#111;cursor:pointer;">
+            ${isGoodValue ? `<div style="font-size:10px;font-weight:900;background:#10b981;color:#fff;border:1.5px solid #111;padding:1px 6px;margin-bottom:8px;display:inline-block;">GOOD VALUE (${item.value_score}x)</div>` : ''}
+            <div style="display:flex;gap:4px;margin-top:4px;">
+              <button onclick="if(window._ctRentalSelectListingUrl)window._ctRentalSelectListingUrl('${esc(item.url)}')" style="flex:1;text-align:center;border:2px solid #111;background:#FFD23F;padding:5px;font-size:10px;font-weight:900;text-transform:uppercase;color:#111;cursor:pointer;box-shadow:1px 1px 0 #111;">
                 Details 🔍
               </button>
-              <a href="${esc(item.url)}" target="_blank" rel="noreferrer" style="border:2px solid #111;background:#FAF6E9;padding:5px 8px;font-size:11px;font-weight:900;color:#111;text-decoration:none;display:inline-block;">
+              <a href="${esc(item.url)}" target="_blank" rel="noreferrer" style="border:2px solid #111;background:#fff;padding:5px 8px;font-size:11px;font-weight:900;color:#111;text-decoration:none;display:inline-block;box-shadow:1px 1px 0 #111;">
                 ↗
               </a>
             </div>
@@ -243,11 +243,11 @@ export default function MapView({ listings, theme, onSelectListing, onFilterSubu
   }, [suburbData, listings, viewMode]);
 
   return (
-    <div className="relative border-[3px] border-ink bg-neutral-100 shadow-[6px_6px_0_#111111] mb-7 h-[500px] z-0">
+    <div className="relative border-2 border-ink bg-neutral-100 shadow-[3px_3px_0_#111111] mb-6 h-[520px] z-0">
       <div ref={mapContainer} className="w-full h-full" />
 
       {listings.length === 0 && (
-        <div className="absolute inset-0 bg-white/95 dark:bg-neutral-900/95 border-[3px] border-ink flex flex-col items-center justify-center z-[1000] p-6 text-center select-none">
+        <div className="absolute inset-0 bg-white/95 dark:bg-neutral-900/95 border-2 border-ink flex flex-col items-center justify-center z-[1000] p-6 text-center select-none">
           <div className="text-4xl mb-4">📍</div>
           <div className="text-base font-black uppercase tracking-tight text-ink mb-1">No Listings to Map</div>
           <div className="text-xs text-neutral-500 font-bold max-w-xs">
@@ -257,7 +257,7 @@ export default function MapView({ listings, theme, onSelectListing, onFilterSubu
       )}
 
       {/* Layer Mode Switcher Controls */}
-      <div className="absolute top-4 left-4 z-[1000] flex gap-1 bg-white border-[3px] border-ink p-1 shadow-[4px_4px_0_#111111] select-none">
+      <div className="absolute top-4 left-4 z-[1000] flex gap-1 bg-white border-2 border-ink p-1 shadow-[2px_2px_0_#111111] select-none">
         <button
           onClick={() => setViewMode('suburbs')}
           className={`px-3 py-1 text-xs font-black uppercase transition-colors cursor-pointer border border-transparent ${
@@ -277,7 +277,7 @@ export default function MapView({ listings, theme, onSelectListing, onFilterSubu
       </div>
 
       {/* Legend */}
-      <div className="absolute left-4 bottom-4 bg-white border-[3px] border-ink p-3 shadow-[4px_4px_0_#111111] text-xs font-bold z-[1000] rounded-none max-w-[200px] select-none pointer-events-auto">
+      <div className="absolute left-4 bottom-4 bg-white border-2 border-ink p-3 shadow-[2px_2px_0_#111111] text-xs font-bold z-[1000] rounded-none max-w-[200px] select-none pointer-events-auto">
         <div className="font-extrabold uppercase tracking-wide border-b-2 border-ink pb-1 mb-2">
           {viewMode === 'suburbs' ? 'Median Price' : 'Rental Value Tier'}
         </div>
