@@ -3,6 +3,7 @@ import { SUBURBS_LIST } from '../utils/suburbs';
 
 export default function AIPanel({ filteredListings, filters }) {
   const [analysis, setAnalysis] = useState('');
+  const [structuredData, setStructuredData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [typewriterIndex, setTypewriterIndex] = useState(0);
   const [generatedAt, setGeneratedAt] = useState(null);
@@ -76,6 +77,7 @@ export default function AIPanel({ filteredListings, filters }) {
       setShowSkip(false);
       setTypewriterIndex(0);
       setAnalysis(cached.analysis);
+      setStructuredData(cached.structured || null);
       setGeneratedAt(cached.generatedAt);
       return;
     }
@@ -84,6 +86,7 @@ export default function AIPanel({ filteredListings, filters }) {
     setShowSkip(false);
     setTypewriterIndex(0);
     setAnalysis('');
+    setStructuredData(null);
     try {
       const response = await fetch('/api/analyse', {
         method: 'POST',
@@ -101,8 +104,9 @@ export default function AIPanel({ filteredListings, filters }) {
         const data = await response.json();
         setTypewriterIndex(0);
         setAnalysis(data.analysis);
+        setStructuredData(data.structured || null);
         setGeneratedAt(data.generatedAt);
-        cacheRef.current[signature] = { analysis: data.analysis, generatedAt: data.generatedAt };
+        cacheRef.current[signature] = { analysis: data.analysis, structured: data.structured, generatedAt: data.generatedAt };
       } else {
         setAnalysis("Analysis failed — the service is temporarily unavailable. Please try again in a moment.");
       }
@@ -154,26 +158,69 @@ export default function AIPanel({ filteredListings, filters }) {
         )}
 
         {!loading && analysis && (
-          <div className="space-y-4">
-            {streamedText.split('\n\n').map((para, idx) => {
-              const paraKey = `para-${idx}`;
-              // Parse basic bold markers (**text**)
-              const cleanPara = para.split('**').map((chunk, cIdx) => {
-                if (cIdx % 2 !== 0) {
-                  return <strong key={`${paraKey}-b-${cIdx}`} className="font-black text-ink">{chunk}</strong>;
-                }
-                return chunk;
-              });
+          <div>
+            {structuredData?.sentiment && (
+              <div className="flex flex-wrap items-center gap-3 mb-4 pb-3 border-b-2 border-dashed border-neutral-200">
+                <span className={`px-2.5 py-1 text-xs font-black uppercase tracking-wider text-white ${
+                  structuredData.sentiment === 'tenant_favored' ? 'bg-emerald-600' :
+                  structuredData.sentiment === 'landlord_favored' ? 'bg-amber-600' : 'bg-blue'
+                }`}>
+                  {structuredData.sentimentLabel || 'Market Overview'}
+                </span>
+                {structuredData.headline && (
+                  <span className="font-bold text-ink text-sm">
+                    {structuredData.headline}
+                  </span>
+                )}
+              </div>
+            )}
 
-              return (
-                <p key={paraKey} className="leading-relaxed">
-                  {cleanPara}
-                  {idx === streamedText.split('\n\n').length - 1 && !isStreamingFinished && (
-                    <span className="blinking-cursor" />
-                  )}
-                </p>
-              );
-            })}
+            {structuredData?.bargainSuburbs && structuredData.bargainSuburbs.length > 0 && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+                {structuredData.bargainSuburbs.map((b, i) => (
+                  <div key={i} className="border-2 border-ink bg-neutral-50 p-2.5 text-xs">
+                    <div className="flex justify-between items-center mb-1">
+                      <span className="font-black text-ink uppercase">{b.suburb}</span>
+                      <span className="bg-emerald-100 text-emerald-800 font-bold px-1.5 py-0.5">{b.discount}</span>
+                    </div>
+                    <p className="text-neutral-600 leading-snug">{b.detail}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {structuredData?.actionableAdvice && structuredData.actionableAdvice.length > 0 && (
+              <div className="mb-4 bg-blue/5 border-l-4 border-blue p-3 text-xs space-y-1">
+                <div className="font-black text-ink uppercase tracking-wider mb-1">Tactical Search Recommendations:</div>
+                {structuredData.actionableAdvice.map((tip, i) => (
+                  <div key={i} className="text-neutral-700 flex items-start gap-1.5">
+                    <span className="text-blue font-bold">▸</span>
+                    <span>{tip}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="space-y-4 pt-1">
+              {streamedText.split('\n\n').map((para, idx) => {
+                const paraKey = `para-${idx}`;
+                const cleanPara = para.split('**').map((chunk, cIdx) => {
+                  if (cIdx % 2 !== 0) {
+                    return <strong key={`${paraKey}-b-${cIdx}`} className="font-black text-ink">{chunk}</strong>;
+                  }
+                  return chunk;
+                });
+
+                return (
+                  <p key={paraKey} className="leading-relaxed">
+                    {cleanPara}
+                    {idx === streamedText.split('\n\n').length - 1 && !isStreamingFinished && (
+                      <span className="blinking-cursor" />
+                    )}
+                  </p>
+                );
+              })}
+            </div>
           </div>
         )}
       </div>

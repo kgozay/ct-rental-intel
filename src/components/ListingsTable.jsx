@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useDeferredValue } from 'react';
 import ValueBadge from './ValueBadge';
 import { SUBURBS_LIST } from '../utils/suburbs';
 
@@ -167,6 +167,23 @@ export default function ListingsTable({ listings, filteredListings, filters, set
         return compareWithNullsLast(a.price, b.price, sortAsc);
     }
   }), [filteredListings, sortField, sortAsc]);
+
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [filters, sortField, sortAsc]);
+
+  const totalCount = sortedListings.length;
+  const numPageSize = pageSize === 'all' ? totalCount : Number(pageSize);
+  const totalPages = pageSize === 'all' ? 1 : Math.max(1, Math.ceil(totalCount / (numPageSize || 25)));
+
+  const paginatedListings = useMemo(() => {
+    if (pageSize === 'all') return sortedListings;
+    const start = (currentPage - 1) * numPageSize;
+    return sortedListings.slice(start, start + numPageSize);
+  }, [sortedListings, currentPage, numPageSize, pageSize]);
 
   return (
     <div className="tableview">
@@ -435,7 +452,7 @@ export default function ListingsTable({ listings, filteredListings, filters, set
                 </td>
               </tr>
             ) : (
-              sortedListings.map((item, idx) => {
+              paginatedListings.map((item, idx) => {
                 const isPriceDrop = item.previous_price && item.price < item.previous_price;
                 const days = daysAgo(item.created_at);
                 const isNew = lastVisit && item.created_at && item.created_at > lastVisit;
@@ -523,11 +540,55 @@ export default function ListingsTable({ listings, filteredListings, filters, set
         </table>
       </div>
 
-      {/* FOOTER ROW */}
-      <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-        <div className="font-extrabold text-sm text-ink select-none">
-          Showing <span className="inline-block bg-blue text-white px-2 py-0.5 text-xs font-black shadow-[2px_2px_0_#111111] mr-1">{sortedListings.length}</span> of {listings.length} listings
+      {/* FOOTER ROW & PAGINATION CONTROLS */}
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-4">
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="font-extrabold text-xs text-ink select-none">
+            Showing <span className="inline-block bg-blue text-white px-2 py-0.5 text-xs font-black shadow-[2px_2px_0_#111111] mr-1">
+              {totalCount === 0 ? 0 : `${(currentPage - 1) * numPageSize + 1}–${Math.min(currentPage * numPageSize, totalCount)}`}
+            </span> of {totalCount} matching ({listings.length} total)
+          </div>
+
+          <label className="flex items-center gap-1.5 text-xs font-black text-ink select-none">
+            <span>Per page:</span>
+            <select
+              value={pageSize}
+              onChange={(e) => {
+                setPageSize(e.target.value === 'all' ? 'all' : Number(e.target.value));
+                setCurrentPage(1);
+              }}
+              className="border-2 border-ink bg-white text-ink px-2 py-1 font-bold text-xs cursor-pointer focus:outline-none focus:ring-1 focus:ring-blue"
+            >
+              <option value={25}>25</option>
+              <option value={50}>50</option>
+              <option value={100}>100</option>
+              <option value="all">All</option>
+            </select>
+          </label>
         </div>
+
+        {totalPages > 1 && (
+          <div className="flex items-center gap-1.5 select-none">
+            <button
+              onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+              disabled={currentPage === 1}
+              className="border-2 border-ink bg-white text-ink font-black text-xs px-2.5 py-1 cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed hover:bg-neutral-100 shadow-[1px_1px_0_#111111]"
+            >
+              ◀ Prev
+            </button>
+            <span className="text-xs font-extrabold px-2 text-ink">
+              Page {currentPage} of {totalPages}
+            </span>
+            <button
+              onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+              disabled={currentPage === totalPages}
+              className="border-2 border-ink bg-white text-ink font-black text-xs px-2.5 py-1 cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed hover:bg-neutral-100 shadow-[1px_1px_0_#111111]"
+            >
+              Next ▶
+            </button>
+          </div>
+        )}
+
         <button
           onClick={() => exportCsv(sortedListings)}
           className="border-2 border-ink bg-paper font-extrabold text-xs uppercase px-4 py-2 cursor-pointer hover:bg-neutral-100 transition-colors shadow-[2px_2px_0_#111111] hover:shadow-[3px_3px_0_#111111] active:shadow-none active:translate-x-[1px] active:translate-y-[1px]"

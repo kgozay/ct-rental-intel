@@ -182,7 +182,8 @@ export default function MapView({ listings, theme, onSelectListing, onFilterSubu
 
         const isGoodValue = item.value_score > 1.15;
         const isPriceDrop = item.previous_price && item.price < item.previous_price;
-        const color = isGoodValue ? '#A3E635' : priceColor(item.price);
+        const isExpensive = item.value_score != null && item.value_score < 0.85;
+        const color = isGoodValue ? '#10b981' : isExpensive ? '#ef4444' : '#2563EB';
 
         const imgHtml = item.main_image_url
           ? `<img src="${esc(item.main_image_url)}" alt="${esc(item.address || item.suburb)}" style="width:100%;height:85px;object-fit:cover;border:2px solid #111;margin-bottom:6px;" onerror="this.style.display='none'"/>`
@@ -264,22 +265,35 @@ export default function MapView({ listings, theme, onSelectListing, onFilterSubu
       {/* Legend */}
       <div className="absolute left-4 bottom-4 bg-white border-[3px] border-ink p-3 shadow-[4px_4px_0_#111111] text-xs font-bold z-[1000] rounded-none max-w-[200px] select-none pointer-events-auto">
         <div className="font-extrabold uppercase tracking-wide border-b-2 border-ink pb-1 mb-2">
-          {viewMode === 'suburbs' ? 'Median Price' : 'Price / Value'}
+          {viewMode === 'suburbs' ? 'Median Price' : 'Rental Value Tier'}
         </div>
         <div className="flex flex-col gap-1.5">
-          {viewMode === 'listings' && (
-            <div className="flex items-center gap-2 pb-1 border-b border-dashed border-ink/20">
-              <span className="w-3.5 h-3.5 border-2 border-ink rounded-full bg-[#A3E635]" />
-              <span className="text-blue font-black">Good Value</span>
-            </div>
+          {viewMode === 'listings' ? (
+            <>
+              <div className="flex items-center gap-2">
+                <span className="w-3.5 h-3.5 border-2 border-ink rounded-full bg-[#10b981]" />
+                <span className="font-extrabold text-emerald-800">Good Value (&gt;1.15x)</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="w-3.5 h-3.5 border-2 border-ink rounded-full bg-[#2563EB]" />
+                <span className="font-bold text-blue">Fair / Market Rate</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="w-3.5 h-3.5 border-2 border-ink rounded-full bg-[#ef4444]" />
+                <span className="font-bold text-rose-700">Premium / High</span>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="flex items-center gap-2"><span className="w-3.5 h-3.5 border-2 border-ink rounded-full bg-[#10b981]" /><span>≤ R15k</span></div>
+              <div className="flex items-center gap-2"><span className="w-3.5 h-3.5 border-2 border-ink rounded-full bg-[#f59e0b]" /><span>R15k – R22k</span></div>
+              <div className="flex items-center gap-2"><span className="w-3.5 h-3.5 border-2 border-ink rounded-full bg-[#f97316]" /><span>R22k – R35k</span></div>
+              <div className="flex items-center gap-2"><span className="w-3.5 h-3.5 border-2 border-ink rounded-full bg-[#ef4444]" /><span>&gt; R35k</span></div>
+            </>
           )}
-          <div className="flex items-center gap-2"><span className="w-3.5 h-3.5 border-2 border-ink rounded-full bg-[#10b981]" /><span>≤ R15k</span></div>
-          <div className="flex items-center gap-2"><span className="w-3.5 h-3.5 border-2 border-ink rounded-full bg-[#f59e0b]" /><span>R15k – R22k</span></div>
-          <div className="flex items-center gap-2"><span className="w-3.5 h-3.5 border-2 border-ink rounded-full bg-[#f97316]" /><span>R22k – R35k</span></div>
-          <div className="flex items-center gap-2"><span className="w-3.5 h-3.5 border-2 border-ink rounded-full bg-[#ef4444]" /><span>&gt; R35k</span></div>
         </div>
         <div className="mt-2 pt-1.5 border-t border-dashed border-ink/40 text-[0.5625rem] opacity-60">
-          {viewMode === 'suburbs' ? 'Bubble size = listing count' : 'Click any pin for property details'}
+          {viewMode === 'suburbs' ? 'Bubble size = listing count' : 'Pins jittered near suburb centroid'}
         </div>
       </div>
     </div>

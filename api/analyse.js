@@ -1,11 +1,38 @@
 const { SUBURBS } = require('./suburbs');
 const VALID_SUBURBS = new Set(SUBURBS.map(s => s.name));
 
+const rateLimitMap = new Map();
+const RATE_LIMIT_WINDOW_MS = 60 * 1000;
+const MAX_REQUESTS_PER_WINDOW = 15;
+
+function isRateLimited(req) {
+  const ip = req?.headers?.['x-forwarded-for']?.split(',')[0]?.trim() || req?.socket?.remoteAddress || 'local';
+  const now = Date.now();
+  const windowStart = now - RATE_LIMIT_WINDOW_MS;
+  const timestamps = (rateLimitMap.get(ip) || []).filter(t => t > windowStart);
+  if (timestamps.length >= MAX_REQUESTS_PER_WINDOW) {
+    return true;
+  }
+  timestamps.push(now);
+  rateLimitMap.set(ip, timestamps);
+  return false;
+}
+
 function generateFallbackAnalysis(parsedStats, context, totalListings, priceChangesCount, goodValueCount, maxPriceText, safeSuburb) {
   // Identify cheapest and most expensive suburbs from parsedStats
   const suburbsList = Object.keys(parsedStats);
   if (suburbsList.length === 0) {
-    return `Currently, there are no active listings matching your search filter (${maxPriceText}, suburbs: ${safeSuburb}). To see market intelligence, try broadening your suburb selection or increasing the maximum price cap.`;
+    const emptyText = `Currently, there are no active listings matching your search filter (${maxPriceText}, suburbs: ${safeSuburb}). To see market intelligence, try broadening your suburb selection or increasing the maximum price cap.`;
+    return {
+      report: emptyText,
+      structured: {
+        sentiment: 'balanced',
+        sentimentLabel: 'Neutral Market',
+        headline: `No active listings matching ${maxPriceText} in ${safeSuburb}`,
+        bargainSuburbs: [],
+        actionableAdvice: ['Broaden your price range or select additional suburbs.']
+      }
+    };
   }
 
   // Sort by overallMedianPrice
@@ -23,11 +50,39 @@ function generateFallbackAnalysis(parsedStats, context, totalListings, priceChan
   // Find 1-bed medians
   const c1Bed = cheapStats.medianPriceByBedrooms?.['1'] || cheapStats.overallMedianPrice || '—';
 
-  return `**${cheapestSuburb}** and **${bestValueSub}** deliver the strongest rental value within the current **${maxPriceText}** parameter. In **${cheapestSuburb}**, overall median rent is **R ${cheapStats.overallMedianPrice ? cheapStats.overallMedianPrice.toLocaleString('en-ZA') : '—'}**, presenting a strong pricing advantage compared to **${premiumSuburb}** (median **R ${premStats.overallMedianPrice ? premStats.overallMedianPrice.toLocaleString('en-ZA') : '—'}**). Specifically, 1-bedroom units in **${cheapestSuburb}** (median **${typeof c1Bed === 'number' ? 'R ' + c1Bed.toLocaleString('en-ZA') : c1Bed}**) undercut the Atlantic Seaboard average by up to **25%**, signaling immediate cost-efficiency for budget-conscious tenants.
+  const report = `**${cheapestSuburb}** and **${bestValueSub}** deliver the strongest rental value within the current **${maxPriceText}** parameter. In **${cheapestSuburb}**, overall median rent is **R ${cheapStats.overallMedianPrice ? cheapStats.overallMedianPrice.toLocaleString('en-ZA') : '—'}**, presenting a strong pricing advantage compared to **${premiumSuburb}** (median **R ${premStats.overallMedianPrice ? premStats.overallMedianPrice.toLocaleString('en-ZA') : '—'}**). Specifically, 1-bedroom units in **${cheapestSuburb}** (median **${typeof c1Bed === 'number' ? 'R ' + c1Bed.toLocaleString('en-ZA') : c1Bed}**) undercut the Atlantic Seaboard average by up to **25%**, signaling immediate cost-efficiency for budget-conscious tenants.
 
 Market supply is currently concentrated across **${totalListings} active listings**, with **${goodValueCount} listings** qualifying as good-value opportunities priced 15%+ below local medians. Furnishing distribution reveals **${premStats.furnishedPercent ?? 50}%** furnished listings in **${premiumSuburb}** vs **${cheapStats.furnishedPercent ?? 30}%** in **${cheapestSuburb}**, reflecting corporate tenant demand in central coastal nodes versus longer-term residential leases inland. A total of **${priceChangesCount} recent price reductions** indicate motivated landlords adjusting to current seasonal absorption rates.
 
 Strategic Recommendation: Prioritize listings in **${bestValueSub}** with value scores exceeding **1.15** to capture the greatest square-meter efficiency. If targeting **${premiumSuburb}**, search for unfurnished inventory to avoid the 20–30% premium associated with short-term rental finishes, and set alerts for properties available immediately where negotiation leverage remains highest.`;
+
+  const sentiment = goodValueCount >= Math.max(1, Math.floor(totalListings * 0.2)) ? 'tenant_favored' : 'balanced';
+
+  return {
+    report,
+    structured: {
+      sentiment,
+      sentimentLabel: sentiment === 'tenant_favored' ? 'Tenant-Favored Market' : 'Balanced Market',
+      headline: `${bestValueSub} & ${cheapestSuburb} lead value within ${maxPriceText}`,
+      bargainSuburbs: [
+        {
+          suburb: cheapestSuburb,
+          discount: `${cheapStats.overallMedianPrice && premStats.overallMedianPrice ? Math.round((1 - cheapStats.overallMedianPrice / premStats.overallMedianPrice) * 100) : 25}%`,
+          detail: `Median R${cheapStats.overallMedianPrice?.toLocaleString('en-ZA') || '—'}/mo vs R${premStats.overallMedianPrice?.toLocaleString('en-ZA') || '—'} in ${premiumSuburb}`
+        },
+        {
+          suburb: bestValueSub,
+          discount: `${cheapStats.goodValueCount || goodValueCount} value picks`,
+          detail: `Highest density of listings scored 1.15+ value ratio`
+        }
+      ],
+      actionableAdvice: [
+        `Prioritize listings in ${bestValueSub} with value score > 1.15 for maximum square-meter efficiency.`,
+        `In ${premiumSuburb}, opt for unfurnished units to bypass the 20–30% short-term rental premium.`,
+        `Monitor ${priceChangesCount} recently discounted listings for increased landlord negotiation leverage.`
+      ]
+    }
+  };
 }
 
 module.exports = async function handler(req, res) {
@@ -37,8 +92,14 @@ module.exports = async function handler(req, res) {
     return res.status(405).json({ error: `Method ${req.method} not allowed` });
   }
 
+  if (isRateLimited(req)) {
+    return res.status(429).json({ error: "Rate limit exceeded. Please wait a minute before generating new analysis." });
+  }
+
   try {
-    const { listings = [], context = {} } = req.body;
+    const rawListings = Array.isArray(req.body?.listings) ? req.body.listings : [];
+    const listings = rawListings.slice(0, 150); // Cap payload size
+    const context = req.body?.context || {};
     const GEMINI_KEY = process.env.GEMINI_API_KEY;
 
     // 1. Calculate detailed aggregates (bedroom medians, furnishing ratio) for Gemini
@@ -118,11 +179,13 @@ module.exports = async function handler(req, res) {
     const rawMinBeds = parseInt(context.minBeds, 10);
     const safeMinBeds = (!isNaN(rawMinBeds) && rawMinBeds >= 0) ? rawMinBeds : null;
 
+    const fallbackData = generateFallbackAnalysis(parsedStats, context, totalListings, priceChangesCount, goodValueCount, maxPriceText, safeSuburb);
+
     // Fallback if no API key is provided
     if (!GEMINI_KEY) {
-      const fallbackText = generateFallbackAnalysis(parsedStats, context, totalListings, priceChangesCount, goodValueCount, maxPriceText, safeSuburb);
       return res.status(200).json({
-        analysis: fallbackText,
+        analysis: fallbackData.report,
+        structured: fallbackData.structured,
         generatedAt: new Date().toISOString(),
         fallback: true
       });
@@ -139,16 +202,24 @@ module.exports = async function handler(req, res) {
 
     const systemPrompt = `You are a senior residential property analyst specializing in Cape Town's Atlantic Seaboard, City Bowl, and Southern Suburbs.
 Current Real-World Date: ${currentDateFormatted} (Current Month & Year: ${currentMonthYear}).
-CRITICAL TEMPORAL AWARENESS: Today is in ${currentMonthYear}. All market insights, seasonal trends (e.g. late winter / approaching spring in the Southern Hemisphere), and rental availability timelines MUST be evaluated strictly from the perspective of ${currentMonthYear}. Never refer to 2024 or 2025 as the present year. Listings available in past months of ${now.getFullYear()} (e.g. June/July ${now.getFullYear()}) are available immediately.
+CRITICAL TEMPORAL AWARENESS: Today is in ${currentMonthYear}. All market insights, seasonal trends, and rental availability timelines MUST be evaluated strictly from the perspective of ${currentMonthYear}. Never refer to 2024 or 2025 as the present year. Listings available in past months of ${now.getFullYear()} are available immediately.
 
-Write a highly insightful, professional, and data-driven market report based on the provided listing stats. 
-
-Your report must be structured in exactly three paragraphs:
-1. **Value & Budget Optimization**: Analyze which suburbs or specific bedroom configurations offer the best value relative to the user's budget. Identify specific pricing anomalies (e.g. where a larger configuration or a premium suburb is priced surprisingly close to a cheaper one).
-2. **Supply, Furnishing & Market Dynamics**: Analyze the supply distributions, furnishing ratios, and configuration patterns across suburbs. Explain what these numbers suggest about landlord pricing power and tenant profiles (e.g., student density in Claremont, short-term let focus in De Waterkant, or long-term family rentals in Sea Point).
-3. **Strategic Recommendations**: Provide concrete, actionable tactics for a prospective tenant searching in these markets, mentioning specific numbers, price points, and suburbs to target.
-
-Use bold text for suburb names, prices, and statistics to make the analysis immediately scannable. Do not use headings, markdown bullet lists, or generic advice. Be concrete, analytical, and highly structured.`;
+Write a highly insightful, professional, and data-driven market report based on the provided listing stats.
+Respond STRICTLY with a valid JSON object matching this schema:
+{
+  "sentiment": "tenant_favored" | "balanced" | "landlord_favored",
+  "sentimentLabel": "Tenant-Favored" | "Balanced Market" | "Landlord-Favored",
+  "headline": "Short 1-sentence analytical headline summarizing value opportunities",
+  "bargainSuburbs": [
+    { "suburb": "Suburb Name", "discount": "Estimated percentage or value edge", "detail": "Specific pricing anomaly reason" }
+  ],
+  "actionableAdvice": [
+    "Tactical tip 1 with specific numbers/suburbs",
+    "Tactical tip 2 with specific numbers/suburbs",
+    "Tactical tip 3 with specific numbers/suburbs"
+  ],
+  "report": "Three paragraphs of detailed markdown analysis. Paragraph 1 on value & budget optimization; Paragraph 2 on supply, furnishing & market dynamics; Paragraph 3 on strategic recommendations. Use bold text for numbers and suburb names to make it scannable. Do not use headings or bullet lists inside the report field."
+}`;
 
     const prompt = `Report Date: ${currentDateFormatted} (${currentMonthYear})
 Here is the current aggregated listing data:
@@ -163,7 +234,7 @@ Here is the current aggregated listing data:
 Detailed Suburb Aggregates:
 ${JSON.stringify(parsedStats, null, 2)}
 
-Please write the analysis based on this data from the present perspective of ${currentMonthYear}. Use bold text for numbers and suburb names to make it scannable. Do not use headings or bullet lists.`;
+Return pure JSON conforming to the requested schema.`;
 
     // REST call to Google Gemini API
     const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_KEY}`;
@@ -178,6 +249,7 @@ Please write the analysis based on this data from the present perspective of ${c
       generationConfig: {
         temperature: 0.2,
         maxOutputTokens: 4096,
+        responseMimeType: "application/json",
         thinkingConfig: { thinkingBudget: 0 }
       }
     };
@@ -192,12 +264,29 @@ Please write the analysis based on this data from the present perspective of ${c
 
       if (response.ok) {
         const result = await response.json();
-        let analysis = result.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (analysis && analysis.trim()) {
-          return res.status(200).json({
-            analysis: analysis.trim(),
-            generatedAt: new Date().toISOString()
-          });
+        let rawText = result.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (rawText && rawText.trim()) {
+          try {
+            const clean = rawText.trim().replace(/^```json\s*/i, '').replace(/\s*```$/i, '');
+            const parsed = JSON.parse(clean);
+            return res.status(200).json({
+              analysis: parsed.report || rawText.trim(),
+              structured: {
+                sentiment: parsed.sentiment || fallbackData.structured.sentiment,
+                sentimentLabel: parsed.sentimentLabel || fallbackData.structured.sentimentLabel,
+                headline: parsed.headline || fallbackData.structured.headline,
+                bargainSuburbs: Array.isArray(parsed.bargainSuburbs) ? parsed.bargainSuburbs : fallbackData.structured.bargainSuburbs,
+                actionableAdvice: Array.isArray(parsed.actionableAdvice) ? parsed.actionableAdvice : fallbackData.structured.actionableAdvice
+              },
+              generatedAt: new Date().toISOString()
+            });
+          } catch (jsonErr) {
+            return res.status(200).json({
+              analysis: rawText.trim(),
+              structured: fallbackData.structured,
+              generatedAt: new Date().toISOString()
+            });
+          }
         }
       }
     } catch (apiErr) {
@@ -205,9 +294,9 @@ Please write the analysis based on this data from the present perspective of ${c
     }
 
     // Fallback if Gemini call failed
-    const fallbackText = generateFallbackAnalysis(parsedStats, context, totalListings, priceChangesCount, goodValueCount, maxPriceText, safeSuburb);
     return res.status(200).json({
-      analysis: fallbackText,
+      analysis: fallbackData.report,
+      structured: fallbackData.structured,
       generatedAt: new Date().toISOString(),
       fallback: true
     });

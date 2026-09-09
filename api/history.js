@@ -7,6 +7,9 @@ module.exports = async function handler(req, res) {
     return res.status(405).json({ error: `Method ${req.method} not allowed` });
   }
 
+  // Edge CDN cache: fresh for 5 mins, serves stale up to 10 mins while revalidating
+  res.setHeader('Cache-Control', 'public, s-maxage=300, stale-while-revalidate=600');
+
   try {
     const { beds } = req.query;
     const bedsVal = beds ? parseInt(beds, 10) : null;

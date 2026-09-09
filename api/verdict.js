@@ -34,14 +34,47 @@ function generateHeuristicVerdict(listing, suburbMedianPrice) {
   return `${priceComment}${detailComment}${availComment}`.trim();
 }
 
+const rateLimitMap = new Map();
+const RATE_LIMIT_WINDOW_MS = 60 * 1000;
+const MAX_REQUESTS_PER_WINDOW = 30;
+
+function isRateLimited(req) {
+  const ip = req?.headers?.['x-forwarded-for']?.split(',')[0]?.trim() || req?.socket?.remoteAddress || 'local';
+  const now = Date.now();
+  const windowStart = now - RATE_LIMIT_WINDOW_MS;
+  const timestamps = (rateLimitMap.get(ip) || []).filter(t => t > windowStart);
+  if (timestamps.length >= MAX_REQUESTS_PER_WINDOW) {
+    return true;
+  }
+  timestamps.push(now);
+  rateLimitMap.set(ip, timestamps);
+  return false;
+}
+
+function sanitizeText(str, maxLen = 80) {
+  if (typeof str !== 'string') return '';
+  return str.slice(0, maxLen).replace(/[\r\n`]/g, ' ').trim();
+}
+
 module.exports = async function handler(req, res) {
   if (req.method !== 'POST') {
     res.setHeader('Allow', ['POST']);
     return res.status(405).json({ error: `Method ${req.method} not allowed` });
   }
 
+  if (isRateLimited(req)) {
+    return res.status(429).json({ error: "Rate limit exceeded. Please wait a moment." });
+  }
+
   try {
-    const { listing = {}, suburbMedianPrice } = req.body;
+    const rawListing = req.body?.listing || {};
+    const listing = {
+      ...rawListing,
+      suburb: sanitizeText(rawListing.suburb, 50),
+      address: sanitizeText(rawListing.address, 100),
+      agency_name: sanitizeText(rawListing.agency_name, 60)
+    };
+    const suburbMedianPrice = typeof req.body?.suburbMedianPrice === 'number' ? req.body.suburbMedianPrice : null;
     const GEMINI_KEY = process.env.GEMINI_API_KEY;
 
     if (!GEMINI_KEY) {

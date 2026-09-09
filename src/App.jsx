@@ -57,17 +57,59 @@ export default function App() {
     return prev;
   });
 
-  const [filters, setFilters] = useState({
-    search: '',
-    suburbs: [...SUBURBS_LIST],
-    maxPrice: 80000,
-    minBeds: null,
-    furnished: null,
-    goodValueOnly: false,
-    priceDropOnly: false,
-    availableBefore: '',
-    shortlistOnly: false,
+  const [filters, setFilters] = useState(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const subParam = params.get('suburbs');
+      const maxP = params.get('maxPrice');
+      const beds = params.get('minBeds');
+      const furn = params.get('furnished');
+      const q = params.get('search');
+      return {
+        search: q || '',
+        suburbs: subParam ? subParam.split(',').filter(s => SUBURBS_LIST.includes(s)) : [...SUBURBS_LIST],
+        maxPrice: maxP ? parseInt(maxP, 10) : 80000,
+        minBeds: beds ? parseInt(beds, 10) : null,
+        furnished: furn === 'true' ? true : furn === 'false' ? false : null,
+        goodValueOnly: params.get('goodValue') === 'true',
+        priceDropOnly: params.get('priceDrop') === 'true',
+        availableBefore: params.get('avail') || '',
+        shortlistOnly: params.get('shortlist') === 'true',
+      };
+    } catch {
+      return {
+        search: '',
+        suburbs: [...SUBURBS_LIST],
+        maxPrice: 80000,
+        minBeds: null,
+        furnished: null,
+        goodValueOnly: false,
+        priceDropOnly: false,
+        availableBefore: '',
+        shortlistOnly: false,
+      };
+    }
   });
+
+  // Keep URL in sync with active filters for shareable deep links
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams();
+      if (filters.search) params.set('search', filters.search);
+      if (filters.suburbs.length < SUBURBS_LIST.length) params.set('suburbs', filters.suburbs.join(','));
+      if (filters.maxPrice < 80000) params.set('maxPrice', String(filters.maxPrice));
+      if (filters.minBeds !== null) params.set('minBeds', String(filters.minBeds));
+      if (filters.furnished !== null) params.set('furnished', String(filters.furnished));
+      if (filters.goodValueOnly) params.set('goodValue', 'true');
+      if (filters.priceDropOnly) params.set('priceDrop', 'true');
+      if (filters.availableBefore) params.set('avail', filters.availableBefore);
+      if (filters.shortlistOnly) params.set('shortlist', 'true');
+
+      const query = params.toString();
+      const nextUrl = query ? `${window.location.pathname}?${query}` : window.location.pathname;
+      window.history.replaceState(null, '', nextUrl);
+    } catch {}
+  }, [filters]);
 
   const pollRef = useRef(null);
 
@@ -371,9 +413,19 @@ export default function App() {
 
       {/* RENDER VIEW TAB CONTENT */}
       {loading ? (
-        <div className="border-[3px] border-ink bg-white p-16 text-center shadow-[6px_6px_0_#111111]">
-          <div className="text-neutral-400 font-extrabold text-lg animate-pulse">
-            ⏳ Loading Cape Town Rental Intelligence Dashboard...
+        <div className="border-[3px] border-ink bg-white p-6 shadow-[6px_6px_0_#111111] animate-pulse">
+          <div className="flex justify-between items-center mb-6">
+            <div className="h-6 w-48 bg-neutral-200 border border-ink/20" />
+            <div className="h-6 w-32 bg-neutral-200 border border-ink/20" />
+          </div>
+          <div className="space-y-3 mb-6">
+            <div className="h-10 bg-neutral-100 border border-ink/10 w-full" />
+            <div className="h-10 bg-neutral-100 border border-ink/10 w-full" />
+            <div className="h-10 bg-neutral-100 border border-ink/10 w-full" />
+            <div className="h-10 bg-neutral-100 border border-ink/10 w-full" />
+          </div>
+          <div className="text-center text-neutral-400 font-black text-xs uppercase tracking-wider py-2">
+            ✦ Fetching live rental market intelligence...
           </div>
         </div>
       ) : (

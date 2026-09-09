@@ -14,8 +14,8 @@ function resolveBaseUrl(req) {
   if (process.env.PUBLIC_BASE_URL) return process.env.PUBLIC_BASE_URL.replace(/\/$/, '');
   if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
   // Local/dev fallback from request headers (webhooks won't reach localhost — see CLAUDE.md).
-  const proto = req.headers['x-forwarded-proto'] || 'https';
-  const host = req.headers['x-forwarded-host'] || req.headers.host;
+  const proto = req?.headers?.['x-forwarded-proto'] || 'https';
+  const host = req?.headers?.['x-forwarded-host'] || req?.headers?.host;
   return host ? `${proto}://${host}` : '';
 }
 
@@ -26,15 +26,27 @@ function resolveBaseUrl(req) {
  * in api/ingest.js, which keeps every function call well under 60s.
  */
 module.exports = async function handler(req, res) {
-  // Only allow POST (manual refresh).
-  const isCron = req.method === 'GET' && req.query.force === 'true';
+  // Only allow POST (manual refresh) or GET with force=true for cron.
+  const force = req?.query?.force === 'true';
+  const isCron = req.method === 'GET' && force;
   if (req.method !== 'POST' && !isCron) {
     res.setHeader('Allow', ['POST']);
     return res.status(405).json({ error: `Method ${req.method} not allowed` });
   }
 
-  const APIFY_TOKEN = process.env.APIFY_API_TOKEN;
   const INGEST_SECRET = process.env.INGEST_SECRET;
+
+  // Security guard — forced scrapes bypass cooldown and trigger paid Apify runs.
+  // Must be authorized via secret query parameter or Bearer token.
+  if (force) {
+    const authHeader = req?.headers?.['authorization'];
+    const token = authHeader && authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
+    if (!INGEST_SECRET || (req?.query?.secret !== INGEST_SECRET && token !== INGEST_SECRET)) {
+      return res.status(401).json({ error: "Unauthorized: forced scrape requires valid secret" });
+    }
+  }
+
+  const APIFY_TOKEN = process.env.APIFY_API_TOKEN;
 
   if (!APIFY_TOKEN) {
     return res.status(500).json({ error: "APIFY_API_TOKEN environment variable is not set" });
@@ -50,7 +62,7 @@ module.exports = async function handler(req, res) {
 
   try {
     // 0. Cooldown guard — skip the billable scrape if data is still fresh.
-    const force = req.query.force === 'true';
+
     if (!force) {
       try {
         const lastRows = await sql.query(`SELECT scraped_at FROM scrapes ORDER BY id DESC LIMIT 1`);
