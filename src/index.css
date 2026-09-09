@@ -247,3 +247,13 @@ html.dark .leaflet-popup-tip {
 html.dark .leaflet-popup-close-button {
   color: #FAF6E9 !important;
 }
+
+/* Leaflet dark mode tiles for OpenStreetMap (preserves saturated marker colors) */
+.dark-mode-tiles .leaflet-tile,
+img.leaflet-tile.dark-mode-tiles {
+  filter: invert(100%) hue-rotate(180deg) brightness(95%) contrast(90%);
+}
+
+html.dark .leaflet-container {
+  background-color: #18181b !important;
+}
