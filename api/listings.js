@@ -9,8 +9,8 @@ module.exports = async function handler(req, res) {
     return res.status(405).json({ error: `Method ${req.method} not allowed` });
   }
 
-  // Edge CDN cache: fresh for 5 mins, serves stale up to 10 mins while revalidating
-  res.setHeader('Cache-Control', 'public, s-maxage=300, stale-while-revalidate=600');
+  // Edge CDN cache: fresh for 30s, serves stale up to 60s while revalidating
+  res.setHeader('Cache-Control', 'public, s-maxage=30, stale-while-revalidate=60');
 
   try {
     const { suburb, maxPrice, minBeds, furnished } = req.query;
@@ -20,8 +20,6 @@ module.exports = async function handler(req, res) {
     let paramIdx = 1;
 
     // Fetch the latest scrape timestamp to surface in the UI header.
-    // We no longer filter by scrape_id — the listings table upserts on url
-    // (unique), so all rows already represent current state across all suburbs.
     const latestScrapeResult = await sql.query(
       `SELECT id, scraped_at FROM scrapes ORDER BY id DESC LIMIT 1`
     );
@@ -40,7 +38,7 @@ module.exports = async function handler(req, res) {
     if (suburb) {
       const suburbsList = suburb.split(',').map(s => s.trim()).filter(s => VALID_SUBURB_NAMES.has(s));
       if (suburbsList.length > 0) {
-        queryConditions.push(`suburb = ANY($${paramIdx++})`);
+        queryConditions.push(`l.suburb = ANY($${paramIdx++})`);
         queryParams.push(suburbsList);
       }
     }
@@ -49,7 +47,7 @@ module.exports = async function handler(req, res) {
     if (maxPrice) {
       const maxPriceVal = parseInt(maxPrice, 10);
       if (!isNaN(maxPriceVal)) {
-        queryConditions.push(`price <= $${paramIdx++}`);
+        queryConditions.push(`l.price <= $${paramIdx++}`);
         queryParams.push(maxPriceVal);
       }
     }
@@ -58,30 +56,39 @@ module.exports = async function handler(req, res) {
     if (minBeds) {
       const minBedsVal = parseInt(minBeds, 10);
       if (!isNaN(minBedsVal)) {
-        queryConditions.push(`bedrooms >= $${paramIdx++}`);
+        queryConditions.push(`l.bedrooms >= $${paramIdx++}`);
         queryParams.push(minBedsVal);
       }
     }
 
     // 5. Filter by furnishing status
     if (furnished === 'true') {
-      queryConditions.push(`furnished = true`);
+      queryConditions.push(`l.furnished = true`);
     } else if (furnished === 'false') {
-      queryConditions.push(`(furnished = false OR furnished IS NULL)`);
+      queryConditions.push(`(l.furnished = false OR l.furnished IS NULL)`);
     }
 
     const whereClause = queryConditions.length > 0 
-      ? `WHERE ${queryConditions.join(' AND ')}` 
+      ? `AND ${queryConditions.join(' AND ')}` 
       : '';
 
+    // Only return listings from the latest scrape for each suburb.
+    // Historical listings remain in the database for trends and history.
     const listingsQuery = `
-      SELECT id, scrape_id, listing_id, url, suburb, property_type, bedrooms, bathrooms,
-             price, size_m2, price_per_m2, value_score, furnished, available_date,
-             address, lat, lng, geocode_precise, main_image_url, agency_name,
-             price_changed, previous_price, scraped_at, created_at
-      FROM listings
-      ${whereClause}
-      ORDER BY price_per_m2 ASC, price ASC;
+      WITH latest_suburb_scrapes AS (
+        SELECT suburb, MAX(scrape_id) AS max_scrape_id
+        FROM listings
+        GROUP BY suburb
+      )
+      SELECT l.id, l.scrape_id, l.listing_id, l.url, l.suburb, l.property_type, l.bedrooms, l.bathrooms,
+             l.price, l.size_m2, l.price_per_m2, l.value_score, l.furnished, l.available_date,
+             l.address, l.lat, l.lng, l.geocode_precise, l.main_image_url, l.agency_name,
+             l.price_changed, l.previous_price, l.scraped_at, l.created_at
+      FROM listings l
+      INNER JOIN latest_suburb_scrapes lss
+         ON l.suburb = lss.suburb AND l.scrape_id = lss.max_scrape_id
+      WHERE 1=1 ${whereClause}
+      ORDER BY l.price_per_m2 ASC, l.price ASC;
     `;
 
     const listings = await sql.query(listingsQuery, queryParams);

@@ -56,7 +56,8 @@ async function migrate() {
     )`,
     `CREATE INDEX IF NOT EXISTS idx_suburb_medians_scrape ON suburb_medians(scrape_id)`,
     `CREATE INDEX IF NOT EXISTS idx_suburb_medians_lookup ON suburb_medians(suburb, scrape_id)`,
-    `ALTER TABLE suburb_medians ADD COLUMN IF NOT EXISTS bedrooms INTEGER`
+    `ALTER TABLE suburb_medians ADD COLUMN IF NOT EXISTS bedrooms INTEGER`,
+    `ALTER TABLE scrapes ADD COLUMN IF NOT EXISTS pending_suburbs TEXT[]`
   ];
 
   for (const statement of statements) {

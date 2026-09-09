@@ -1,5 +1,6 @@
 const { sql } = require('./db');
 const { SUBURBS } = require('./suburbs');
+const { resolveBaseUrl, launchSuburbRun } = require('./launcher');
 
 // Manual-only cooldown — prevents re-scraping more than once per day.
 const COOLDOWN_HOURS = 24;
@@ -7,17 +8,6 @@ const COOLDOWN_HOURS = 24;
 // Enrichment roughly doubles the per-listing Apify cost (listing + enrichment events).
 // Toggle off via APIFY_ENRICH=false once we confirm floor_area survives without it.
 const ENRICH = process.env.APIFY_ENRICH !== 'false';
-
-// Resolve the public base URL Apify webhooks should call back. On Vercel,
-// VERCEL_URL is the (per-deployment) host; PUBLIC_BASE_URL pins a stable prod domain.
-function resolveBaseUrl(req) {
-  if (process.env.PUBLIC_BASE_URL) return process.env.PUBLIC_BASE_URL.replace(/\/$/, '');
-  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
-  // Local/dev fallback from request headers (webhooks won't reach localhost — see CLAUDE.md).
-  const proto = req?.headers?.['x-forwarded-proto'] || 'https';
-  const host = req?.headers?.['x-forwarded-host'] || req?.headers?.host;
-  return host ? `${proto}://${host}` : '';
-}
 
 /**
  * Launch-only scrape. Free-tier (Vercel Hobby, 60s cap) safe: this function only
@@ -87,77 +77,49 @@ module.exports = async function handler(req, res) {
       }
     }
 
-    // 1. Create the scrape session up front. Its timestamp drives the cooldown,
-    //    and ingests attribute their listings to this scrapeId.
+    // Ensure pending_suburbs column exists
+    await sql.query(`ALTER TABLE scrapes ADD COLUMN IF NOT EXISTS pending_suburbs TEXT[];`);
+
+    // Split suburbs into an initial batch of 4 (under Apify free tier 5-concurrency cap)
+    // and queue the remaining 3 to be launched by /api/ingest as slots free up.
+    const initialSuburbs = SUBURBS.slice(0, 4);
+    const pendingSuburbs = SUBURBS.slice(4).map(s => s.name);
+
+    // 1. Create the scrape session up front with pending suburbs.
     const scrapeRow = await sql.query(
-      `INSERT INTO scrapes (suburbs, listing_count, dropped_count) VALUES ($1, 0, 0) RETURNING id`,
-      [SUBURBS.map(s => s.name)]
+      `INSERT INTO scrapes (suburbs, pending_suburbs, listing_count, dropped_count) VALUES ($1, $2, 0, 0) RETURNING id`,
+      [SUBURBS.map(s => s.name), pendingSuburbs]
     );
     const scrapeId = scrapeRow[0].id;
 
-    console.log(`Launching ${SUBURBS.length} Apify runs for scrape #${scrapeId} (enrich=${ENRICH}, force=${force})`);
+    console.log(`Launching initial batch of ${initialSuburbs.length} Apify runs for scrape #${scrapeId} (${pendingSuburbs.length} queued; enrich=${ENRICH}, force=${force})`);
 
-    // 2. Launch all runs in parallel, each with a completion webhook to /api/ingest.
-    const launchPromises = SUBURBS.map(async (suburb) => {
-      const hook = [{
-        eventTypes: ['ACTOR.RUN.SUCCEEDED'],
-        requestUrl: `${baseUrl}/api/ingest?suburb=${encodeURIComponent(suburb.name)}&scrapeId=${scrapeId}&secret=${encodeURIComponent(INGEST_SECRET)}`
-      }];
-      // Encode webhooks as base64 then URL-encode so that base64 chars (+, /, =)
-      // don't get corrupted when transmitted in a query parameter.
-      const webhooksEncoded = encodeURIComponent(Buffer.from(JSON.stringify(hook)).toString('base64'));
-      const url = `https://api.apify.com/v2/acts/fatihtahta~property24-scraper-za/runs?token=${APIFY_TOKEN}&webhooks=${webhooksEncoded}`;
-      const body = {
-        deal_type: "Properties For Rent",
-        location: suburb.location,
-        limit: 50,
-        // Push residential filtering upstream so we don't pay for listings isValid() would drop.
-        property_type: ["house", "apartment_flat", "townhouse"],
-        max_price: 150000,            // mirror the isValid() sanity ceiling
-        enrich_data: ENRICH,
-        sort_by: "most_recent",
-        proxyConfiguration: {
-          useApifyProxy: true,
-          apifyProxyGroups: ["RESIDENTIAL"]
-        }
-      };
-
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
-      });
-
-      if (!response.ok) {
-        const errText = await response.text();
-        throw new Error(`Failed to launch scraper for ${suburb.name}: ${response.statusText} (${errText})`);
-      }
-
-      const data = await response.json();
-      return { suburb: suburb.name, runId: data.data.id };
-    });
+    // 2. Launch the initial batch concurrently (safe under 5-run cap).
+    const launchPromises = initialSuburbs.map(suburb =>
+      launchSuburbRun(suburb, scrapeId, baseUrl, INGEST_SECRET, APIFY_TOKEN, ENRICH)
+    );
 
     const settled = await Promise.allSettled(launchPromises);
     const launched = settled.filter(s => s.status === 'fulfilled').map(s => s.value);
     const failed = settled.filter(s => s.status === 'rejected').map(s => s.reason.message);
 
     if (launched.length === 0) {
-      throw new Error(`All suburb runs failed to launch. ${failed.join('; ')}`);
+      throw new Error(`All initial suburb runs failed to launch. ${failed.join('; ')}`);
     }
     if (failed.length > 0) {
-      console.warn(`${failed.length} suburb run(s) failed to launch:`, failed.join('; '));
+      console.warn(`${failed.length} initial suburb run(s) failed to launch:`, failed.join('; '));
     }
 
-    console.log(`Launched ${launched.length}/${SUBURBS.length} runs for scrape #${scrapeId}:`,
+    console.log(`Launched ${launched.length}/${initialSuburbs.length} initial runs for scrape #${scrapeId} (${pendingSuburbs.length} pending in queue):`,
       launched.map(r => `${r.suburb}:${r.runId}`).join(', '));
 
-    // 3. Return immediately. Ingestion happens asynchronously via webhooks.
+    // 3. Return immediately. Ingestion & queued launches happen asynchronously via webhooks.
     return res.status(202).json({
       started: true,
       scrapeId,
       launched: launched.length,
-      failedToLaunch: failed.length,
-      suburbs: SUBURBS.length
+      queued: pendingSuburbs.length,
+      totalSuburbs: SUBURBS.length
     });
 
   } catch (err) {

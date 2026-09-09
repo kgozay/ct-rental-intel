@@ -117,7 +117,8 @@ export default function App() {
     if (!silent) setLoading(true);
     let fetchedLastScraped = null;
     try {
-      const listRes = await fetch('/api/listings');
+      const listUrl = silent ? `/api/listings?_t=${Date.now()}` : '/api/listings';
+      const listRes = await fetch(listUrl);
       if (listRes.ok) {
         const listData = await listRes.json();
         setListings(listData.listings || []);

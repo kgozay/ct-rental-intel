@@ -1,6 +1,7 @@
 const { sql } = require('./db');
 const { SUBURBS } = require('./suburbs');
 const { isValid, normaliseListing, computeValueScores } = require('./normalise');
+const { resolveBaseUrl, launchSuburbRun } = require('./launcher');
 
 function median(nums) {
   const arr = nums.filter(n => n !== null && n !== undefined && !isNaN(n)).sort((a, b) => a - b);
@@ -176,6 +177,46 @@ module.exports = async function handler(req, res) {
     }
 
     console.log(`Ingest ${suburbName} (scrape #${scrapeId}): upserted ${upserted.length}, dropped ${droppedCount}`);
+
+    // 8. Concurrency queue runner: if there are pending suburbs in this scrape session,
+    // claim the next one and launch it now that an Apify slot has freed up.
+    try {
+      const baseUrl = resolveBaseUrl(req);
+      const pendingResult = await sql.query(
+        `SELECT pending_suburbs FROM scrapes WHERE id = $1`,
+        [scrapeId]
+      );
+      if (
+        pendingResult.length > 0 &&
+        Array.isArray(pendingResult[0].pending_suburbs) &&
+        pendingResult[0].pending_suburbs.length > 0
+      ) {
+        const pending = [...pendingResult[0].pending_suburbs];
+        const nextSuburbName = pending.shift();
+
+        // Atomically update pending_suburbs queue
+        await sql.query(
+          `UPDATE scrapes SET pending_suburbs = $1 WHERE id = $2`,
+          [pending, scrapeId]
+        );
+
+        const nextDef = SUBURBS.find(s => s.name === nextSuburbName);
+        if (nextDef && baseUrl && process.env.INGEST_SECRET && APIFY_TOKEN) {
+          console.log(`Ingest chaining: launching queued suburb ${nextSuburbName} for scrape #${scrapeId} (${pending.length} remaining in queue)`);
+          await launchSuburbRun(
+            nextDef,
+            scrapeId,
+            baseUrl,
+            process.env.INGEST_SECRET,
+            APIFY_TOKEN,
+            process.env.APIFY_ENRICH !== 'false'
+          );
+        }
+      }
+    } catch (chainErr) {
+      console.warn(`Could not launch next queued suburb for scrape #${scrapeId}:`, chainErr.message);
+    }
+
     return res.status(200).json({
       ingested: upserted.length,
       dropped: droppedCount,
