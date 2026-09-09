@@ -395,12 +395,12 @@ export default function FilterBar({ filters, setFilters, listings = [], shortlis
           {activeChips.map(chip => (
             <span
               key={chip.id}
-              className="inline-flex items-center gap-1 border border-ink/60 bg-ink/5 dark:bg-paper/10 text-ink dark:text-paper text-[0.6875rem] font-bold px-2 py-0.5"
+              className="filter-chip inline-flex items-center gap-1.5 border-2 border-ink bg-ink text-paper text-xs font-black uppercase px-2.5 py-0.5 shadow-[1px_1px_0_#111111]"
             >
               <span>{chip.label}</span>
               <button
                 onClick={chip.onClear}
-                className="hover:text-red-500 font-bold ml-0.5 cursor-pointer leading-none"
+                className="hover:text-yellow text-xs font-black ml-1 cursor-pointer leading-none"
                 aria-label={`Remove filter ${chip.label}`}
               >
                 ✕

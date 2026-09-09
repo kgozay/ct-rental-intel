@@ -257,3 +257,34 @@ img.leaflet-tile.dark-mode-tiles {
 html.dark .leaflet-container {
   background-color: #18181b !important;
 }
+
+/* Active filter chip high-contrast styling */
+.filter-chip {
+  background-color: #111111 !important;
+  color: #FAF6E9 !important;
+  border-color: #111111 !important;
+}
+.filter-chip span {
+  color: #FAF6E9 !important;
+}
+.filter-chip button {
+  color: #FAF6E9 !important;
+}
+.filter-chip button:hover {
+  color: #FFD23F !important;
+}
+
+html.dark .filter-chip {
+  background-color: #FAF6E9 !important;
+  color: #111111 !important;
+  border-color: #FAF6E9 !important;
+}
+html.dark .filter-chip span {
+  color: #111111 !important;
+}
+html.dark .filter-chip button {
+  color: #111111 !important;
+}
+html.dark .filter-chip button:hover {
+  color: #2563EB !important;
+}
