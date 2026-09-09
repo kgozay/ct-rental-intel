@@ -136,6 +136,15 @@ html.dark .text-ink {
   color: #FAF6E9 !important;
 }
 
+/* High-luminance accents (yellow & lime) must always keep dark text in dark mode */
+html.dark .bg-yellow,
+html.dark .bg-lime,
+html.dark .bg-yellow *,
+html.dark .bg-lime *,
+html.dark .text-on-accent {
+  color: #111111 !important;
+}
+
 html.dark .text-ink\/50 {
   color: rgba(250, 246, 233, 0.5) !important;
 }
