@@ -1,6 +1,8 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { SUBURBS_LIST } from '../utils/suburbs';
+import { useRentalData } from '../hooks/useRentalData';
+import { formatRelativeTime } from '../utils/dataStatus';
 
 // Suburb metadata & fallback baselines (used while live data is loading or offline)
 const SUBURB_METADATA = {
@@ -14,8 +16,7 @@ const SUBURB_METADATA = {
 };
 
 export default function Landing() {
-  const [stats, setStats] = useState(null);
-  const [liveListings, setLiveListings] = useState([]);
+  const { listings: liveListings, dataStatus } = useRentalData();
   const [theme, setTheme] = useState(() => {
     return localStorage.getItem('theme') || 'light';
   });
@@ -34,27 +35,23 @@ export default function Landing() {
   }, [theme]);
 
   useEffect(() => {
-    document.title = "Cape Town Rental Intelligence — Live Rental Data for 7 Suburbs";
-    let cancelled = false;
-    fetch('/api/listings?latestOnly=true')
-      .then(r => (r.ok ? r.json() : null))
-      .then(data => {
-        if (cancelled || !data || !data.listings) return;
-        const listings = data.listings;
-        setLiveListings(listings);
-        const suburbs = new Set(listings.map(l => l.suburb)).size;
-        const rates = listings.map(l => l.price_per_m2).filter(r => r != null).sort((a, b) => a - b);
-        let medianRate = null;
-        if (rates.length) {
-          const mid = Math.floor(rates.length / 2);
-          medianRate = rates.length % 2 ? rates[mid] : Math.round((rates[mid - 1] + rates[mid]) / 2);
-        }
-        const goodValue = listings.filter(l => l.value_score > 1.15).length;
-        setStats({ total: listings.length, suburbs, medianRate, goodValue });
-      })
-      .catch(() => {});
-    return () => { cancelled = true; };
+    document.title = "Cape Town Rental Intelligence — Rental Data for 7 Suburbs";
   }, []);
+
+  const hasLiveData = liveListings && liveListings.length > 0;
+
+  const stats = useMemo(() => {
+    if (!hasLiveData) return null;
+    const suburbs = new Set(liveListings.map(l => l.suburb)).size;
+    const rates = liveListings.map(l => l.price_per_m2).filter(r => r != null).sort((a, b) => a - b);
+    let medianRate = null;
+    if (rates.length) {
+      const mid = Math.floor(rates.length / 2);
+      medianRate = rates.length % 2 ? rates[mid] : Math.round((rates[mid - 1] + rates[mid]) / 2);
+    }
+    const goodValue = liveListings.filter(l => l.value_score > 1.15).length;
+    return { total: liveListings.length, suburbs, medianRate, goodValue };
+  }, [liveListings, hasLiveData]);
 
   // Compute live per-suburb medians with baseline fallbacks
   const suburbStats = useMemo(() => {
@@ -152,8 +149,18 @@ export default function Landing() {
 
       {/* HERO */}
       <header className="mb-16">
-        <div className="fade-up inline-block border-[3px] border-ink bg-yellow text-ink px-3.5 py-1.5 text-xs font-black uppercase tracking-wider shadow-[3px_3px_0_#111111] mb-6">
-          Cape Town · Atlantic Seaboard · City Bowl · Southern Suburbs
+        <div className="fade-up flex flex-wrap items-center gap-2 mb-6">
+          <div className="inline-block border-[3px] border-ink bg-yellow text-ink px-3.5 py-1.5 text-xs font-black uppercase tracking-wider shadow-[3px_3px_0_#111111]">
+            Cape Town · Atlantic Seaboard · City Bowl · Southern Suburbs
+          </div>
+          <div className="inline-flex items-center gap-1.5 border-2 border-ink bg-white text-ink px-3 py-1 text-xs font-bold shadow-[2px_2px_0_#111111]">
+            <span className={`w-2 h-2 rounded-full ${hasLiveData ? 'bg-emerald-500' : 'bg-amber-400'}`} />
+            <span>
+              {hasLiveData
+                ? `Snapshot: ${dataStatus?.lastScraped ? formatRelativeTime(dataStatus.lastScraped) : 'Active'} · 48h refresh cycle`
+                : 'Baseline estimates · Snapshot on demand'}
+            </span>
+          </div>
         </div>
         <h1
           className="fade-up font-black uppercase leading-[0.93] tracking-tight mb-6"
@@ -166,15 +173,15 @@ export default function Landing() {
           className="fade-up text-lg md:text-xl font-medium max-w-[680px] mb-9 leading-relaxed text-ink/90"
           style={{ animationDelay: '140ms' }}
         >
-          Live residential rental intelligence for <b>7 Cape Town suburbs</b> — every listing
-          normalised, value-scored against median R/m², mapped, and analysed. Skip sponsored ad spam and spot genuine value first.
+          Residential rental intelligence for <b>7 Cape Town suburbs</b> — updated on demand with 48h refresh cycles. Every listing
+          normalised, value-scored against median R/m², mapped, and analysed without promotional distortion.
         </p>
         <div className="fade-up flex flex-wrap items-center gap-4" style={{ animationDelay: '220ms' }}>
           <Link
             to="/dashboard"
             className="border-[3px] border-ink bg-blue text-white font-extrabold uppercase px-7 py-4 text-sm tracking-wider no-underline shadow-[6px_6px_0_#111111] transition-all duration-75 hover:translate-x-[-1px] hover:translate-y-[-1px] hover:shadow-[7px_7px_0_#111111] active:translate-x-[3px] active:translate-y-[3px] active:shadow-none"
           >
-            Explore Live Listings →
+            Explore Listings →
           </Link>
           <a
             href="#deal-calculator"
@@ -193,11 +200,12 @@ export default function Landing() {
             className={`fade-up border-[3px] border-ink shadow-[4px_4px_0_#111111] p-5 ${s.accent ? 'bg-yellow text-ink' : 'bg-white'}`}
             style={{ animationDelay: `${300 + i * 70}ms` }}
           >
-            <div className={`text-3xl md:text-[2.375rem] font-black font-mono tracking-tight leading-none ${s.accent ? 'text-ink' : ''} ${!stats ? 'opacity-35' : ''}`}>
+            <div className={`text-3xl md:text-[2.375rem] font-black font-mono tracking-tight leading-none ${s.accent ? 'text-ink' : ''} ${!stats ? 'opacity-40' : ''}`}>
               {s.num}
             </div>
             <div className={`text-xs font-black uppercase tracking-wider mt-2.5 ${s.accent ? 'text-ink/80' : 'text-ink/70'}`}>
               {s.lbl}
+              {!stats && <span className="block text-[10px] font-sans font-normal text-ink/50 normal-case mt-0.5">(baseline estimate)</span>}
             </div>
           </div>
         ))}
@@ -410,7 +418,7 @@ export default function Landing() {
             </span>
             <h4 className="font-black text-sm uppercase text-paper mb-1">Underpriced Gem</h4>
             <p className="text-xs font-medium text-paper/70 leading-relaxed">
-              You get &gt;15% more floor space or pay significantly less per m² than neighbors. Snatched up fast.
+              You get &gt;15% more floor space or pay significantly less per m² than neighbours. Snatched up fast.
             </p>
           </div>
           <div className="border-2 border-paper/30 bg-white/10 p-4">
@@ -434,7 +442,7 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* SUBURB INTELLIGENCE HUB */}
+      {/* SUBURB INTELLIGENCE HUB: RANKED NEIGHBORHOOD TABLE */}
       <section className="mb-20">
         <div className="flex flex-wrap items-end justify-between gap-4 mb-6">
           <div>
@@ -442,53 +450,69 @@ export default function Landing() {
               Coverage
             </span>
             <h2 className="text-2xl md:text-3xl font-black uppercase tracking-tight">
-              7 Suburbs Tracked · Live Intelligence
+              7 Suburbs Tracked · Neighborhood Benchmark Table
             </h2>
           </div>
           <p className="text-xs md:text-sm font-medium text-ink/70 max-w-sm">
-            Click any neighborhood below to launch directly into filtered listings, interactive maps, and price scatter charts.
+            Ranked by floor area rate (R/m²). Click any suburb to open directly in the dashboard with preserved context.
           </p>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {SUBURBS_LIST.map((s) => {
-            const data = suburbStats[s] || SUBURB_METADATA[s];
-            return (
-              <Link
-                key={s}
-                to={`/dashboard?suburbs=${encodeURIComponent(s)}`}
-                className="group border-[3px] border-ink bg-white p-5 shadow-[4px_4px_0_#111111] no-underline transition-all duration-75 hover:bg-paper hover:translate-x-[-2px] hover:translate-y-[-2px] hover:shadow-[6px_6px_0_#111111] flex flex-col justify-between"
-              >
-                <div>
-                  <div className="flex items-start justify-between gap-2 mb-2">
-                    <span className="text-[11px] font-black uppercase tracking-wider text-ink/50 group-hover:text-blue">
+        <div className="border-[3px] border-ink bg-white shadow-[6px_6px_0_#111111] overflow-x-auto">
+          <table className="w-full border-collapse text-left text-xs">
+            <thead>
+              <tr className="bg-ink text-paper uppercase text-[11px] tracking-wider border-b-2 border-ink">
+                <th className="p-3.5 font-black">Suburb</th>
+                <th className="p-3.5 font-black">Region</th>
+                <th className="p-3.5 font-black font-mono">Median Rent</th>
+                <th className="p-3.5 font-black font-mono">Rate (R/m²)</th>
+                <th className="p-3.5 font-black">Coverage / Sample</th>
+                <th className="p-3.5 font-black text-right">Action</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-neutral-200">
+              {Object.entries(suburbStats)
+                .sort(([, a], [, b]) => (a.medianRate || 0) - (b.medianRate || 0))
+                .map(([suburb, data], idx) => (
+                  <tr key={suburb} className="hover:bg-neutral-50 transition-colors">
+                    <td className="p-3.5 font-black text-ink uppercase text-sm">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-mono text-neutral-400">#{idx + 1}</span>
+                        <span>{suburb}</span>
+                      </div>
+                    </td>
+                    <td className="p-3.5 font-bold text-neutral-500 uppercase text-xs">
                       {data.region}
-                    </span>
-                    <span className="border border-ink bg-yellow text-ink text-[11px] font-mono font-bold px-1.5 py-0.5">
-                      {data.count !== '—' ? `${data.count} flats` : 'Tracked'}
-                    </span>
-                  </div>
-                  <h3 className="text-lg font-black uppercase text-ink group-hover:text-blue transition-colors">
-                    {s}
-                  </h3>
-                </div>
-
-                <div className="mt-4 pt-3 border-t-2 border-ink/20 flex items-center justify-between text-xs font-mono font-bold text-ink/80">
-                  <div>
-                    <span className="block text-[10px] uppercase font-sans text-ink/50">Median Rent</span>
-                    R{data.medianPrice.toLocaleString()}
-                  </div>
-                  <div className="text-right">
-                    <span className="block text-[10px] uppercase font-sans text-ink/50">Median Rate</span>
-                    R{data.medianRate}/m²
-                  </div>
-                  <span className="text-sm text-ink group-hover:translate-x-1 transition-transform">
-                    →
-                  </span>
-                </div>
-              </Link>
-            );
-          })}
+                    </td>
+                    <td className="p-3.5 font-black font-mono text-ink tabular-nums text-sm">
+                      R{data.medianPrice.toLocaleString('en-ZA')}
+                    </td>
+                    <td className="p-3.5 font-bold font-mono text-neutral-700 tabular-nums">
+                      R{data.medianRate}/m²
+                    </td>
+                    <td className="p-3.5 font-bold">
+                      {data.count !== '—' ? (
+                        <span className="inline-block border border-ink bg-yellow text-ink px-2 py-0.5 text-[10px] font-mono font-bold">
+                          {data.count} listings
+                        </span>
+                      ) : (
+                        <span className="inline-block border border-neutral-300 bg-neutral-100 text-neutral-500 px-2 py-0.5 text-[10px] font-sans">
+                          Baseline estimate
+                        </span>
+                      )}
+                    </td>
+                    <td className="p-3.5 text-right">
+                      <Link
+                        to={`/dashboard?suburbs=${encodeURIComponent(suburb)}`}
+                        className="inline-block border-2 border-ink bg-paper text-ink font-black uppercase px-3 py-1 text-xs hover:bg-yellow hover:translate-x-[-1px] hover:translate-y-[-1px] transition-all shadow-[1px_1px_0_#111111] no-underline"
+                      >
+                        Explore →
+                      </Link>
+                    </td>
+                  </tr>
+                ))}
+            </tbody>
+          </table>
         </div>
       </section>
 
@@ -589,8 +613,8 @@ export default function Landing() {
                 <h3 className="text-xl font-black uppercase">
                   Sort &amp; Filter Every Listing by Value
                 </h3>
-                <span className="text-xs font-mono font-bold text-ink/60">
-                  Instant multi-column sorting + CSV export
+                <span className="border border-ink bg-yellow px-2 py-0.5 text-[10px] font-black uppercase text-ink shadow-[1px_1px_0_#111111]">
+                  Example Illustrative Preview
                 </span>
               </div>
               <p className="text-sm font-medium text-ink/70 mb-6 leading-relaxed max-w-2xl">

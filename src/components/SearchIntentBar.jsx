@@ -9,6 +9,8 @@ export default function SearchIntentBar({
   onToggleMoreFilters,
   showMoreFilters,
   activeSecondaryFilterCount = 0,
+  onOpenSavedSearches,
+  savedSearchesCount = 0,
 }) {
   const isAllSuburbs = filters.suburbs.length === SUBURBS_LIST.length;
 
@@ -174,7 +176,7 @@ export default function SearchIntentBar({
                   role="radio"
                   aria-checked={active}
                   onClick={() => setFilters(prev => ({ ...prev, minBeds: opt.value }))}
-                  className={`px-3 py-1.5 text-xs font-bold transition-colors cursor-pointer ${
+                  className={`px-3 py-1.5 text-xs font-bold transition-colors cursor-pointer focus-visible:outline-2 focus-visible:outline-ink ${
                     active ? 'bg-ink text-paper' : 'text-ink hover:bg-neutral-100'
                   }`}
                 >
@@ -185,12 +187,13 @@ export default function SearchIntentBar({
           </div>
         </div>
 
-        {/* More Filters Toggle & Reset */}
-        <div className="flex items-center gap-2 shrink-0">
+        {/* More Filters Toggle, Saved Searches, & Reset */}
+        <div className="flex flex-wrap items-center gap-2 shrink-0">
           <button
             onClick={onToggleMoreFilters}
             aria-expanded={showMoreFilters}
-            className={`border-2 border-ink text-xs font-black uppercase px-3 py-1.5 cursor-pointer transition-all shadow-[1px_1px_0_#111111] flex items-center gap-1.5 ${
+            aria-controls="more-filters-panel"
+            className={`border-2 border-ink text-xs font-black uppercase px-3 py-1.5 cursor-pointer transition-all shadow-[1px_1px_0_#111111] flex items-center gap-1.5 focus-visible:outline-2 focus-visible:outline-ink ${
               showMoreFilters || activeSecondaryFilterCount > 0
                 ? 'bg-blue text-white border-blue'
                 : 'bg-white text-ink hover:bg-neutral-100'
@@ -205,10 +208,26 @@ export default function SearchIntentBar({
             <span className="text-[10px]">{showMoreFilters ? '▲' : '▼'}</span>
           </button>
 
+          {onOpenSavedSearches && (
+            <button
+              type="button"
+              onClick={onOpenSavedSearches}
+              className="border-2 border-ink bg-white text-ink text-xs font-black uppercase px-3 py-1.5 hover:bg-neutral-100 transition-colors cursor-pointer shadow-[1px_1px_0_#111111] focus-visible:outline-2 focus-visible:outline-ink flex items-center gap-1.5"
+              title="View and manage saved searches"
+            >
+              <span>Saved</span>
+              {savedSearchesCount > 0 && (
+                <span className="bg-yellow text-ink px-1.5 py-0.2 text-[10px] font-black leading-tight">
+                  {savedSearchesCount}
+                </span>
+              )}
+            </button>
+          )}
+
           {isFiltered && (
             <button
               onClick={() => setFilters(DEFAULT_FILTERS)}
-              className="border-2 border-ink bg-white text-ink text-xs font-black uppercase px-3 py-1.5 hover:bg-yellow transition-colors cursor-pointer shadow-[1px_1px_0_#111111]"
+              className="border-2 border-ink bg-white text-ink text-xs font-black uppercase px-3 py-1.5 hover:bg-yellow transition-colors cursor-pointer shadow-[1px_1px_0_#111111] focus-visible:outline-2 focus-visible:outline-ink"
               title="Reset all filters"
             >
               Reset
@@ -299,13 +318,13 @@ export default function SearchIntentBar({
 
       {/* SECONDARY DISCLOSURE (COLLAPSIBLE) */}
       {showMoreFilters && (
-        <div className="mt-4 pt-3.5 border-t border-ink/10 flex flex-wrap items-center gap-4 bg-paper/50">
+        <div id="more-filters-panel" className="mt-4 pt-3.5 border-t border-ink/10 flex flex-wrap items-center gap-4 bg-paper/50">
           {/* Furnishing */}
           <div className="flex items-center gap-1.5">
             <span className="text-[11px] font-black uppercase tracking-wider text-ink/60">
               Furnishing:
             </span>
-            <div className="inline-flex border-2 border-ink bg-white shadow-[1px_1px_0_#111111]">
+            <div className="inline-flex border-2 border-ink bg-white shadow-[1px_1px_0_#111111]" role="radiogroup" aria-label="Furnishing">
               {[
                 { label: 'All', value: null },
                 { label: 'Furnished', value: true },
@@ -313,8 +332,10 @@ export default function SearchIntentBar({
               ].map(opt => (
                 <button
                   key={opt.label}
+                  role="radio"
+                  aria-checked={filters.furnished === opt.value}
                   onClick={() => setFilters(prev => ({ ...prev, furnished: opt.value }))}
-                  className={`px-2.5 py-1 text-xs font-bold transition-colors cursor-pointer ${
+                  className={`px-2.5 py-1 text-xs font-bold transition-colors cursor-pointer focus-visible:outline-2 focus-visible:outline-ink ${
                     filters.furnished === opt.value ? 'bg-ink text-paper' : 'text-ink hover:bg-neutral-100'
                   }`}
                 >
@@ -333,12 +354,14 @@ export default function SearchIntentBar({
               type="date"
               value={filters.availableBefore || ''}
               onChange={(e) => setFilters(prev => ({ ...prev, availableBefore: e.target.value }))}
-              className="border-2 border-ink bg-white text-ink px-2 py-1 text-xs font-bold shadow-[1px_1px_0_#111111]"
+              aria-label="Filter listings available before date"
+              className="border-2 border-ink bg-white text-ink px-2 py-1 text-xs font-bold shadow-[1px_1px_0_#111111] focus-visible:outline-2 focus-visible:outline-ink"
             />
             {filters.availableBefore && (
               <button
                 onClick={() => setFilters(prev => ({ ...prev, availableBefore: '' }))}
-                className="text-xs font-bold text-blue hover:underline cursor-pointer"
+                className="text-xs font-bold text-blue hover:underline cursor-pointer focus-visible:outline-2 focus-visible:outline-ink"
+                aria-label="Clear available before filter"
               >
                 Clear
               </button>
@@ -348,16 +371,20 @@ export default function SearchIntentBar({
           {/* Value and Price Drop Toggles */}
           <div className="flex items-center gap-2">
             <button
+              type="button"
+              aria-pressed={filters.goodValueOnly}
               onClick={() => setFilters(prev => ({ ...prev, goodValueOnly: !prev.goodValueOnly }))}
-              className={`border-2 border-ink px-3 py-1 text-xs font-bold cursor-pointer transition-all shadow-[1px_1px_0_#111111] ${
+              className={`border-2 border-ink px-3 py-1 text-xs font-bold cursor-pointer transition-all shadow-[1px_1px_0_#111111] focus-visible:outline-2 focus-visible:outline-ink ${
                 filters.goodValueOnly ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-ink hover:bg-neutral-100'
               }`}
             >
               💎 Good Value Only
             </button>
             <button
+              type="button"
+              aria-pressed={filters.priceDropOnly}
               onClick={() => setFilters(prev => ({ ...prev, priceDropOnly: !prev.priceDropOnly }))}
-              className={`border-2 border-ink px-3 py-1 text-xs font-bold cursor-pointer transition-all shadow-[1px_1px_0_#111111] ${
+              className={`border-2 border-ink px-3 py-1 text-xs font-bold cursor-pointer transition-all shadow-[1px_1px_0_#111111] focus-visible:outline-2 focus-visible:outline-ink ${
                 filters.priceDropOnly ? 'bg-blue text-white border-blue' : 'bg-white text-ink hover:bg-neutral-100'
               }`}
             >

@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { SUBURBS_LIST } from '../utils/suburbs';
+import { getSampleConfidence } from '../utils/confidence';
 
 export default function SuburbComparison({ listings, history, onDrillDown }) {
   const cards = useMemo(() => {
@@ -7,6 +8,7 @@ export default function SuburbComparison({ listings, history, onDrillDown }) {
       const suburbListings = listings.filter(l => l.suburb === suburb);
       const count = suburbListings.length;
       const goodValue = suburbListings.filter(l => l.value_score > 1.15).length;
+      const confidence = getSampleConfidence(count);
 
       // Median rent (overall median price)
       const prices = suburbListings.map(l => l.price).filter(p => typeof p === 'number' && p > 0).sort((a, b) => a - b);
@@ -36,7 +38,7 @@ export default function SuburbComparison({ listings, history, onDrillDown }) {
         else if (trendDiff < 0) trend = 'down';
       }
 
-      return { suburb, count, goodValue, medianRent, medianPrice, trend, trendDiff };
+      return { suburb, count, goodValue, confidence, medianRent, medianPrice, trend, trendDiff };
     });
 
     // Sort cheapest median rent first; suburbs with no data go to the end
@@ -47,6 +49,19 @@ export default function SuburbComparison({ listings, history, onDrillDown }) {
       return a.medianRent - b.medianRent;
     });
   }, [listings, history]);
+
+  if (!listings || listings.length === 0) {
+    return (
+      <div className="border-[3px] border-ink bg-white p-10 text-center shadow-[4px_4px_0_#111111]">
+        <h3 className="text-sm font-black uppercase text-ink mb-1.5">
+          No Suburb Comparison Data Available
+        </h3>
+        <p className="text-xs text-neutral-500 font-medium max-w-sm mx-auto mb-0 leading-relaxed">
+          Broaden your filters or reset to see side-by-side medians and rates across all 7 monitored suburbs.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -60,7 +75,7 @@ export default function SuburbComparison({ listings, history, onDrillDown }) {
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
-        {cards.map(({ suburb, count, goodValue, medianRent, medianPrice, trend, trendDiff }) => (
+        {cards.map(({ suburb, count, goodValue, confidence, medianRent, medianPrice, trend, trendDiff }) => (
           <div
             key={suburb}
             className="border-[3px] border-ink bg-white shadow-[4px_4px_0_#111111] p-5 rounded-none flex flex-col gap-3"
@@ -71,11 +86,20 @@ export default function SuburbComparison({ listings, history, onDrillDown }) {
                 <div className="font-black text-sm uppercase tracking-wide leading-tight">
                   {suburb}
                 </div>
-                <div className="text-[0.6875rem] font-bold text-paper/60 mt-0.5">
-                  {count} listing{count !== 1 ? 's' : ''}
+                <div className="text-[0.6875rem] font-bold text-paper/80 mt-0.5 flex items-center gap-1.5">
+                  <span>{count} listing{count !== 1 ? 's' : ''}</span>
+                  <span className="text-paper/40">·</span>
+                  <span className="capitalize text-paper/70 font-mono text-[10px]">{confidence}</span>
                 </div>
               </div>
             </div>
+
+            {/* Small sample warning */}
+            {count > 0 && count < 3 && (
+              <div className="border border-amber-600 bg-amber-50 text-amber-900 text-[10px] font-bold p-1.5 leading-tight">
+                ⚠ Low sample size (n={count}). Medians are volatile and illustrative.
+              </div>
+            )}
 
             {/* Stats */}
             <div className="flex flex-col gap-2 text-xs mt-1">

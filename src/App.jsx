@@ -6,8 +6,19 @@ import ResultsToolbar from './components/ResultsToolbar';
 import ListingCardView from './components/ListingCardView';
 import FirstRunState from './components/FirstRunState';
 import DataStatusBar from './components/DataStatusBar';
+import ShortlistWorkspace from './components/ShortlistWorkspace';
+import SavedSearchesModal from './components/SavedSearchesModal';
 import { SUBURBS_LIST } from './utils/suburbs';
 import { exportCsv } from './utils/exportCsv';
+import {
+  loadUserData,
+  addShortlistItem,
+  removeShortlistItem,
+  updateItemNote,
+  saveSearchConfig,
+  deleteSearchConfig,
+  renameSearchConfig,
+} from './utils/userStorage';
 
 const PriceChart = lazy(() => import('./components/PriceChart'));
 const MapView = lazy(() => import('./components/MapView'));
@@ -49,21 +60,54 @@ export default function App() {
   // Bedroom filter for the history chart (drives a separate /api/history fetch)
   const [historyBeds, setHistoryBeds] = useState(null);
 
-  // Shortlist — persisted to localStorage
-  const [shortlisted, setShortlisted] = useState(
-    () => new Set(JSON.parse(localStorage.getItem('shortlist') || '[]'))
-  );
-  const toggleShortlist = (url) => {
-    setShortlisted(prev => {
-      const next = new Set(prev);
-      if (next.has(url)) {
-        next.delete(url);
-      } else {
-        next.add(url);
-      }
-      localStorage.setItem('shortlist', JSON.stringify([...next]));
-      return next;
-    });
+  // Versioned User Data (Shortlist, Notes, Snapshots, Saved Searches)
+  const [userData, setUserData] = useState(() => loadUserData());
+  const shortlisted = useMemo(() => new Set(Object.keys(userData?.items || {})), [userData]);
+
+  const toggleShortlist = (url, listing = null) => {
+    if (shortlisted.has(url)) {
+      setUserData(prev => removeShortlistItem(prev, url));
+    } else {
+      const item = listing || listings.find(l => l.url === url);
+      setUserData(prev => addShortlistItem(prev, url, item));
+    }
+  };
+
+  const handleUpdateNote = (url, note) => {
+    setUserData(prev => updateItemNote(prev, url, note));
+  };
+
+  // Saved searches state & handlers
+  const [showSavedSearchesModal, setShowSavedSearchesModal] = useState(false);
+  const [recentlyDeletedSearch, setRecentlyDeletedSearch] = useState(null);
+
+  const handleSaveCurrentSearch = (name) => {
+    const { updated } = saveSearchConfig(userData, name, filters);
+    setUserData(updated);
+  };
+
+  const handleDeleteSearch = (id) => {
+    const { updated, deletedEntry } = deleteSearchConfig(userData, id);
+    setUserData(updated);
+    setRecentlyDeletedSearch(deletedEntry);
+  };
+
+  const handleUndoDeleteSearch = () => {
+    if (!recentlyDeletedSearch) return;
+    const { updated } = saveSearchConfig(userData, recentlyDeletedSearch.name, recentlyDeletedSearch.filters);
+    setUserData(updated);
+    setRecentlyDeletedSearch(null);
+  };
+
+  const handleRenameSearch = (id, newName) => {
+    setUserData(prev => renameSearchConfig(prev, id, newName));
+  };
+
+  const handleApplySearch = (savedFilters) => {
+    setFilters(prev => ({
+      ...prev,
+      ...savedFilters,
+    }));
   };
 
   // "New since last visit" — record when the user last opened the dashboard
@@ -358,6 +402,8 @@ export default function App() {
             onToggleMoreFilters={() => setShowMoreFilters(prev => !prev)}
             showMoreFilters={showMoreFilters}
             activeSecondaryFilterCount={activeSecondaryFilterCount}
+            onOpenSavedSearches={() => setShowSavedSearchesModal(true)}
+            savedSearchesCount={userData?.savedSearches?.length || 0}
           />
 
           {/* 3 STABLE KPI BENCHMARKS */}
@@ -452,11 +498,13 @@ export default function App() {
                 )}
 
                 {activeTab === 'shortlist' && (
-                  <ListingCardView
-                    listings={displayedListings}
-                    onSelectListing={setSelectedListing}
-                    shortlisted={shortlisted}
+                  <ShortlistWorkspace
+                    shortlistedUrls={shortlisted}
+                    userData={userData}
+                    allListings={listings}
                     onToggleShortlist={toggleShortlist}
+                    onUpdateNote={handleUpdateNote}
+                    onSelectListing={setSelectedListing}
                   />
                 )}
 
@@ -514,6 +562,20 @@ export default function App() {
           />
         </Suspense>
       )}
+
+      {/* SAVED SEARCHES MODAL */}
+      <SavedSearchesModal
+        isOpen={showSavedSearchesModal}
+        onClose={() => setShowSavedSearchesModal(false)}
+        currentFilters={filters}
+        savedSearches={userData?.savedSearches || []}
+        onSaveCurrentSearch={handleSaveCurrentSearch}
+        onApplySearch={handleApplySearch}
+        onDeleteSearch={handleDeleteSearch}
+        onRenameSearch={handleRenameSearch}
+        onUndoDelete={handleUndoDeleteSearch}
+        recentlyDeleted={recentlyDeletedSearch}
+      />
     </div>
   );
 }

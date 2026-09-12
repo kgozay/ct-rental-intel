@@ -111,3 +111,12 @@ export function formatTimestamp(isoString) {
     hour12: false
   });
 }
+
+export function formatRelativeTime(isoString) {
+  if (!isoString) return 'Never';
+  const diffMs = Date.now() - new Date(isoString).getTime();
+  if (isNaN(diffMs)) return 'Never';
+  const hours = diffMs / (1000 * 60 * 60);
+  return formatAge(hours);
+}
+

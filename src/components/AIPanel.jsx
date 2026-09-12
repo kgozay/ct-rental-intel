@@ -9,6 +9,8 @@ export default function AIPanel({ filteredListings, filters }) {
   const [generatedAt, setGeneratedAt] = useState(null);
   const [showSkip, setShowSkip] = useState(false);
 
+  const [isFallback, setIsFallback] = useState(false);
+
   // Cache analyses by signature of the inputs so re-clicking Generate doesn't re-query
   const cacheRef = useRef({});
   const skipTimerRef = useRef(null);
@@ -34,11 +36,15 @@ export default function AIPanel({ filteredListings, filters }) {
     ? '⏳ Analysing...'
     : `✦ ANALYSE ${filteredListings.length} ${suburbSummary} LISTING${filteredListings.length !== 1 ? 'S' : ''}`;
 
-  // Typewriter effect
+  const prefersReducedMotion = typeof window !== 'undefined' &&
+    window.matchMedia &&
+    window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // Typewriter effect (respects prefers-reduced-motion)
   useEffect(() => {
     if (skipTimerRef.current) clearTimeout(skipTimerRef.current);
 
-    if (!analysis) {
+    if (prefersReducedMotion || !analysis) {
       return;
     }
 
@@ -62,9 +68,9 @@ export default function AIPanel({ filteredListings, filters }) {
       clearInterval(interval);
       if (skipTimerRef.current) clearTimeout(skipTimerRef.current);
     };
-  }, [analysis]);
+  }, [analysis, prefersReducedMotion]);
 
-  const streamedText = analysis.slice(0, typewriterIndex);
+  const streamedText = prefersReducedMotion ? analysis : analysis.slice(0, typewriterIndex);
 
   const handleSkip = () => {
     setTypewriterIndex(analysis.length);
@@ -79,6 +85,7 @@ export default function AIPanel({ filteredListings, filters }) {
       setAnalysis(cached.analysis);
       setStructuredData(cached.structured || null);
       setGeneratedAt(cached.generatedAt);
+      setIsFallback(Boolean(cached.fallback));
       return;
     }
 
@@ -87,6 +94,7 @@ export default function AIPanel({ filteredListings, filters }) {
     setTypewriterIndex(0);
     setAnalysis('');
     setStructuredData(null);
+    setIsFallback(false);
     try {
       const response = await fetch('/api/analyse', {
         method: 'POST',
@@ -106,7 +114,13 @@ export default function AIPanel({ filteredListings, filters }) {
         setAnalysis(data.analysis);
         setStructuredData(data.structured || null);
         setGeneratedAt(data.generatedAt);
-        cacheRef.current[signature] = { analysis: data.analysis, structured: data.structured, generatedAt: data.generatedAt };
+        setIsFallback(Boolean(data.fallback));
+        cacheRef.current[signature] = {
+          analysis: data.analysis,
+          structured: data.structured,
+          generatedAt: data.generatedAt,
+          fallback: data.fallback
+        };
       } else {
         setAnalysis("Analysis failed — the service is temporarily unavailable. Please try again in a moment.");
       }
@@ -167,6 +181,11 @@ export default function AIPanel({ filteredListings, filters }) {
                 }`}>
                   {structuredData.sentimentLabel || 'Market Overview'}
                 </span>
+                {isFallback && (
+                  <span className="border border-neutral-300 bg-neutral-100 text-neutral-600 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider">
+                    Automated Summary
+                  </span>
+                )}
                 {structuredData.headline && (
                   <span className="font-bold text-ink text-sm">
                     {structuredData.headline}
@@ -178,7 +197,7 @@ export default function AIPanel({ filteredListings, filters }) {
             {structuredData?.bargainSuburbs && structuredData.bargainSuburbs.length > 0 && (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
                 {structuredData.bargainSuburbs.map((b, i) => (
-                  <div key={i} className="border-2 border-ink bg-neutral-50 p-2.5 text-xs">
+                  <div key={i} className="border-2 border-ink bg-neutral-50 p-2.5 text-xs shadow-[1px_1px_0_#111111]">
                     <div className="flex justify-between items-center mb-1">
                       <span className="font-black text-ink uppercase">{b.suburb}</span>
                       <span className="bg-emerald-100 text-emerald-800 font-bold px-1.5 py-0.5">{b.discount}</span>
@@ -190,7 +209,7 @@ export default function AIPanel({ filteredListings, filters }) {
             )}
 
             {structuredData?.actionableAdvice && structuredData.actionableAdvice.length > 0 && (
-              <div className="mb-4 bg-blue/5 border-l-4 border-blue p-3 text-xs space-y-1">
+              <div className="mb-4 border-2 border-ink bg-neutral-50 p-3 text-xs space-y-1 shadow-[2px_2px_0_#111111]">
                 <div className="font-black text-ink uppercase tracking-wider mb-1">Tactical Search Recommendations:</div>
                 {structuredData.actionableAdvice.map((tip, i) => (
                   <div key={i} className="text-neutral-700 flex items-start gap-1.5">

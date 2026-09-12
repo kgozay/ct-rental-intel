@@ -107,13 +107,31 @@ export default function PriceChart({ listings, history, historyBeds, setHistoryB
     totalScatterPoints += scatterData[sub].length;
   });
 
+  if (!listings || listings.length === 0) {
+    return (
+      <div className="border-[3px] border-ink bg-white p-10 text-center shadow-[4px_4px_0_#111111]">
+        <h3 className="text-sm font-black uppercase text-ink mb-1.5">
+          No Data for Price Analytics
+        </h3>
+        <p className="text-xs text-neutral-500 font-medium max-w-sm mx-auto mb-0 leading-relaxed">
+          No listings match your active filters. Broaden your search or reset filters to view median charts and scatter distributions.
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col gap-10">
       {/* Chart 1: Grouped Bar Chart */}
       <div className="border-[3px] border-ink bg-white p-5 shadow-[6px_6px_0_#111111] rounded-none">
-        <h2 className="inline-block bg-ink text-paper text-xs font-black uppercase tracking-wider px-2.5 py-1 mb-6">
-          Median Price by Suburb & Beds
-        </h2>
+        <div className="flex flex-wrap items-center justify-between gap-2 mb-6">
+          <h2 className="inline-block bg-ink text-paper text-xs font-black uppercase tracking-wider px-2.5 py-1">
+            Median Price by Suburb &amp; Beds
+          </h2>
+          <span className="text-[11px] font-bold text-neutral-500 font-mono">
+            {listings.length} matching listings
+          </span>
+        </div>
         {!hasChart1Data ? (
           <div className="flex flex-col items-center justify-center h-80 bg-neutral-50 dark:bg-neutral-900 border-2 border-dashed border-ink/30 text-neutral-400 font-bold p-4 text-center">
             <span className="font-black text-ink text-sm mb-1">No listings available for bar chart</span>
@@ -153,6 +171,9 @@ export default function PriceChart({ listings, history, historyBeds, setHistoryB
             </ResponsiveContainer>
           </div>
         )}
+        <p className="text-[11px] font-medium text-neutral-500 mt-3 pt-2 border-t border-neutral-200">
+          Summary: Median monthly rents grouped by 1, 2, and 3 bedrooms across active suburbs. Click any bar to drill down.
+        </p>
       </div>
 
       {/* Chart 2: Historical Timeline */}
@@ -209,6 +230,9 @@ export default function PriceChart({ listings, history, historyBeds, setHistoryB
             </ResponsiveContainer>
           </div>
         )}
+        <p className="text-[11px] font-medium text-neutral-500 mt-3 pt-2 border-t border-neutral-200">
+          Summary: Historical suburb median rent trends over 48h crawl cycles. Filter by bedroom count to track specific inventory categories.
+        </p>
       </div>
 
       {/* Chart 3: Scatter Plot (Price vs Size) */}
@@ -246,6 +270,9 @@ export default function PriceChart({ listings, history, historyBeds, setHistoryB
             </ResponsiveContainer>
           </div>
         )}
+        <p className="text-[11px] font-medium text-neutral-500 mt-3 pt-2 border-t border-neutral-200">
+          Summary: Floor area (m²) plotted against monthly rent. Properties towards the lower right deliver maximum living area per Rand.
+        </p>
       </div>
     </div>
   );

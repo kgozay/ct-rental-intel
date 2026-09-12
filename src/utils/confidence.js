@@ -22,6 +22,8 @@ export function getConfidenceLevel(sampleSize) {
   return 'insufficient';
 }
 
+export const getSampleConfidence = getConfidenceLevel;
+
 export function getValueVerdict(valueScore, confidenceLevel) {
   if (confidenceLevel === 'insufficient') {
     return { verdict: 'unrated', label: 'Insufficient data' };

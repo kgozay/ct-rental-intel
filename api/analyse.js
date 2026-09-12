@@ -48,13 +48,28 @@ function generateFallbackAnalysis(parsedStats, context, totalListings, priceChan
   const bestValueSub = sortedByValue[0] || cheapestSuburb;
 
   // Find 1-bed medians
-  const c1Bed = cheapStats.medianPriceByBedrooms?.['1'] || cheapStats.overallMedianPrice || '—';
+  const c1Bed = cheapStats.medianPriceByBedrooms?.['1'] || cheapStats.overallMedianPrice;
+  const p1Bed = premStats.medianPriceByBedrooms?.['1'] || premStats.overallMedianPrice;
 
-  const report = `**${cheapestSuburb}** and **${bestValueSub}** deliver the strongest rental value within the current **${maxPriceText}** parameter. In **${cheapestSuburb}**, overall median rent is **R ${cheapStats.overallMedianPrice ? cheapStats.overallMedianPrice.toLocaleString('en-ZA') : '—'}**, presenting a strong pricing advantage compared to **${premiumSuburb}** (median **R ${premStats.overallMedianPrice ? premStats.overallMedianPrice.toLocaleString('en-ZA') : '—'}**). Specifically, 1-bedroom units in **${cheapestSuburb}** (median **${typeof c1Bed === 'number' ? 'R ' + c1Bed.toLocaleString('en-ZA') : c1Bed}**) undercut the Atlantic Seaboard average by up to **25%**, signaling immediate cost-efficiency for budget-conscious tenants.
+  let comparisonText = '';
+  if (typeof c1Bed === 'number' && typeof p1Bed === 'number' && p1Bed > 0) {
+    const oneBedDiff = Math.round(((p1Bed - c1Bed) / p1Bed) * 100);
+    comparisonText = ` Specifically, 1-bedroom units in **${cheapestSuburb}** (median **R ${c1Bed.toLocaleString('en-ZA')}**) reflect a **${oneBedDiff}%** lower monthly cost compared to **${premiumSuburb}** (median **R ${p1Bed.toLocaleString('en-ZA')}**).`;
+  }
 
-Market supply is currently concentrated across **${totalListings} active listings**, with **${goodValueCount} listings** qualifying as good-value opportunities priced 15%+ below local medians. Furnishing distribution reveals **${premStats.furnishedPercent ?? 50}%** furnished listings in **${premiumSuburb}** vs **${cheapStats.furnishedPercent ?? 30}%** in **${cheapestSuburb}**, reflecting corporate tenant demand in central coastal nodes versus longer-term residential leases inland. A total of **${priceChangesCount} recent price reductions** indicate motivated landlords adjusting to current seasonal absorption rates.
+  const discountPercent = cheapStats.overallMedianPrice && premStats.overallMedianPrice && premStats.overallMedianPrice > 0
+    ? Math.round((1 - cheapStats.overallMedianPrice / premStats.overallMedianPrice) * 100)
+    : 0;
 
-Strategic Recommendation: Prioritize listings in **${bestValueSub}** with value scores exceeding **1.15** to capture the greatest square-meter efficiency. If targeting **${premiumSuburb}**, search for unfurnished inventory to avoid the 20–30% premium associated with short-term rental finishes, and set alerts for properties available immediately where negotiation leverage remains highest.`;
+  const furnishingText = (typeof premStats.furnishedPercent === 'number' && typeof cheapStats.furnishedPercent === 'number')
+    ? `Furnishing breakdown shows **${premStats.furnishedPercent}%** furnished listings in **${premiumSuburb}** versus **${cheapStats.furnishedPercent}%** in **${cheapestSuburb}**.`
+    : `Furnishing data is recorded where specified by agencies.`;
+
+  const report = `**${cheapestSuburb}** and **${bestValueSub}** deliver the lowest rental medians within the active **${maxPriceText}** parameter. In **${cheapestSuburb}**, the overall median rent is **R ${cheapStats.overallMedianPrice ? cheapStats.overallMedianPrice.toLocaleString('en-ZA') : '—'}**, comparing favorably with **${premiumSuburb}** (median **R ${premStats.overallMedianPrice ? premStats.overallMedianPrice.toLocaleString('en-ZA') : '—'}**).${comparisonText}
+
+Market supply in this selection is distributed across **${totalListings} active listings**, with **${goodValueCount} listings** qualifying as Good Value or Potential Value based on local median R/m² benchmarks. ${furnishingText} A total of **${priceChangesCount} listings with price reductions** were identified, highlighting opportunities for active tenant negotiation.
+
+Strategic Recommendation: Prioritize listings in **${bestValueSub}** displaying positive value scores to optimize living space per Rand. In higher-demand suburbs such as **${premiumSuburb}**, review availability dates and recent price adjustments closely to maximize bargaining power.`;
 
   const sentiment = goodValueCount >= Math.max(1, Math.floor(totalListings * 0.2)) ? 'tenant_favored' : 'balanced';
 
@@ -62,24 +77,26 @@ Strategic Recommendation: Prioritize listings in **${bestValueSub}** with value 
     report,
     structured: {
       sentiment,
-      sentimentLabel: sentiment === 'tenant_favored' ? 'Tenant-Favored Market' : 'Balanced Market',
+      sentimentLabel: sentiment === 'tenant_favored' ? 'Tenant-Favored Selection' : 'Balanced Market Selection',
       headline: `${bestValueSub} & ${cheapestSuburb} lead value within ${maxPriceText}`,
       bargainSuburbs: [
         {
           suburb: cheapestSuburb,
-          discount: `${cheapStats.overallMedianPrice && premStats.overallMedianPrice ? Math.round((1 - cheapStats.overallMedianPrice / premStats.overallMedianPrice) * 100) : 25}%`,
+          discount: discountPercent > 0 ? `${discountPercent}% lower` : 'Lowest median',
           detail: `Median R${cheapStats.overallMedianPrice?.toLocaleString('en-ZA') || '—'}/mo vs R${premStats.overallMedianPrice?.toLocaleString('en-ZA') || '—'} in ${premiumSuburb}`
         },
         {
           suburb: bestValueSub,
-          discount: `${cheapStats.goodValueCount || goodValueCount} value picks`,
-          detail: `Highest density of listings scored 1.15+ value ratio`
+          discount: `${parsedStats[bestValueSub]?.goodValueCount || goodValueCount} value picks`,
+          detail: `Substantial density of listings priced below suburb median R/m²`
         }
       ],
       actionableAdvice: [
-        `Prioritize listings in ${bestValueSub} with value score > 1.15 for maximum square-meter efficiency.`,
-        `In ${premiumSuburb}, opt for unfurnished units to bypass the 20–30% short-term rental premium.`,
-        `Monitor ${priceChangesCount} recently discounted listings for increased landlord negotiation leverage.`
+        `Prioritize listings in ${bestValueSub} with positive value scores to maximize space per Rand.`,
+        `Examine unfurnished versus furnished options in ${premiumSuburb} depending on lease duration.`,
+        priceChangesCount > 0
+          ? `Review ${priceChangesCount} discounted listings for increased negotiation leverage.`
+          : `Monitor new listings regularly to catch competitive rentals early.`
       ]
     }
   };

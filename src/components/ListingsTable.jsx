@@ -17,7 +17,7 @@ function SortHdr({ field, title, sortField, sortAsc, handleSort, children }) {
     <th
       onClick={() => handleSort(field)}
       onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { handleSort(field); e.preventDefault(); } }}
-      className="px-4 py-3 cursor-pointer select-none hover:bg-neutral-800 transition-colors whitespace-nowrap focus:outline-none focus:bg-neutral-800"
+      className="px-4 py-3 cursor-pointer select-none hover:bg-neutral-800 transition-colors whitespace-nowrap focus:outline-none focus-visible:bg-neutral-800 focus-visible:ring-2 focus-visible:ring-yellow"
       aria-sort={isSorted ? (sortAsc ? 'ascending' : 'descending') : 'none'}
       role="columnheader"
       tabIndex={0}
@@ -203,15 +203,23 @@ export default function ListingsTable({ listings, filteredListings, filters, set
                     style={{ animationDelay: `${animDelay}ms` }}
                     onClick={() => onSelectListing?.(item)}
                   >
-                    <td className="px-4 py-3.5 border-t border-neutral-200 font-bold text-xs uppercase">
-                      <span className="flex items-center gap-1.5 flex-wrap">
-                        {item.suburb}
+                    <td className="px-4 py-3.5 border-t border-neutral-200">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onSelectListing?.(item);
+                        }}
+                        className="text-left font-bold text-xs uppercase hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-ink focus-visible:ring-offset-1 inline-flex items-center gap-1.5 flex-wrap cursor-pointer"
+                        aria-label={`View details: ${item.bedrooms !== null ? `${item.bedrooms} bed ` : ''}${item.property_type || ''} in ${item.suburb} for R${item.price.toLocaleString('en-ZA')}`}
+                      >
+                        <span className="font-bold text-ink">{item.suburb}</span>
                         {isNew && (
                           <span className="inline-block bg-yellow border border-ink text-ink text-[0.5625rem] font-black uppercase px-1.5 py-0.5 leading-none">
                             NEW
                           </span>
                         )}
-                      </span>
+                      </button>
                     </td>
                     <td className="px-4 py-3.5 border-t border-neutral-200 text-xs uppercase font-extrabold text-neutral-500">
                       {item.property_type}
@@ -252,10 +260,11 @@ export default function ListingsTable({ listings, filteredListings, filters, set
                     <td className="px-4 py-3.5 border-t border-neutral-200" onClick={(e) => e.stopPropagation()}>
                       <div className="flex items-center gap-1.5">
                         <button
-                          onClick={() => toggleShortlist(item.url)}
-                          className="text-base leading-none cursor-pointer hover:scale-110 transition-transform select-none"
+                          type="button"
+                          onClick={() => toggleShortlist(item.url, item)}
+                          className="text-base leading-none cursor-pointer hover:scale-110 transition-transform select-none p-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-ink"
                           title={shortlisted.has(item.url) ? 'Remove from shortlist' : 'Add to shortlist'}
-                          aria-label={shortlisted.has(item.url) ? 'Remove from shortlist' : 'Add to shortlist'}
+                          aria-label={shortlisted.has(item.url) ? `Remove ${item.suburb} property from shortlist` : `Add ${item.suburb} property to shortlist`}
                         >
                           {shortlisted.has(item.url) ? '♥' : '♡'}
                         </button>
@@ -263,8 +272,9 @@ export default function ListingsTable({ listings, filteredListings, filters, set
                           href={item.url}
                           target="_blank"
                           rel="noreferrer"
-                          className="inline-block border-2 border-ink bg-yellow font-black px-2.5 py-1 text-xs text-ink transition-transform duration-75 hover:translate-x-[-1px] hover:translate-y-[-1px] hover:shadow-[2px_2px_0_#111111] active:translate-x-[1px] active:translate-y-[1px] active:shadow-none"
+                          className="inline-block border-2 border-ink bg-yellow font-black px-2.5 py-1 text-xs text-ink transition-transform duration-75 hover:translate-x-[-1px] hover:translate-y-[-1px] hover:shadow-[2px_2px_0_#111111] active:translate-x-[1px] active:translate-y-[1px] active:shadow-none focus:outline-none focus-visible:ring-2 focus-visible:ring-ink"
                           title="Open listing on Property24"
+                          aria-label={`Open listing on Property24: ${item.suburb} - R${item.price.toLocaleString('en-ZA')}`}
                         >
                           ↗
                         </a>
