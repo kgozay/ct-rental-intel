@@ -59,6 +59,19 @@ module.exports = async function handler(req, res) {
       return res.status(400).json({ error: 'No dataset id in webhook payload' });
     }
 
+    // Check scrape status and guard against duplicate webhook delivery
+    const scrapeStatusRes = await sql.query(
+      `SELECT status, completed_suburbs, failed_suburbs FROM scrapes WHERE id = $1`,
+      [scrapeId]
+    );
+    if (scrapeStatusRes.length > 0) {
+      const completed = scrapeStatusRes[0].completed_suburbs || [];
+      if (completed.includes(suburbName)) {
+        console.log(`Ingest skipped: Suburb ${suburbName} already recorded as completed for scrape #${scrapeId}`);
+        return res.status(200).json({ skipped: true, reason: 'already_completed', suburb: suburbName, scrapeId });
+      }
+    }
+
     // 3. Fetch the dataset items for this single run.
     const datasetUrl = `https://api.apify.com/v2/datasets/${datasetId}/items?token=${APIFY_TOKEN}&clean=true`;
     const dsRes = await fetch(datasetUrl);
@@ -145,14 +158,33 @@ module.exports = async function handler(req, res) {
     `;
     const upserted = await sql.query(bulkQuery, params);
 
-    // 6. Atomically bump the scrape totals.
-    await sql.query(
+    // 6. Atomically bump the scrape totals and append to completed_suburbs.
+    const updatedScrapes = await sql.query(
       `UPDATE scrapes
          SET listing_count = COALESCE(listing_count,0) + $1,
-             dropped_count = COALESCE(dropped_count,0) + $2
-       WHERE id = $3`,
-      [upserted.length, droppedCount, scrapeId]
+             dropped_count = COALESCE(dropped_count,0) + $2,
+             completed_suburbs = array_append(COALESCE(completed_suburbs, '{}'), $3)
+       WHERE id = $4
+       RETURNING completed_suburbs, failed_suburbs, pending_suburbs`,
+      [upserted.length, droppedCount, suburbName, scrapeId]
     );
+
+    if (updatedScrapes.length > 0) {
+      const cSuburbs = updatedScrapes[0].completed_suburbs || [];
+      const fSuburbs = updatedScrapes[0].failed_suburbs || [];
+      const pSuburbs = updatedScrapes[0].pending_suburbs || [];
+      if (cSuburbs.length >= SUBURBS.length) {
+        await sql.query(
+          `UPDATE scrapes SET status = 'succeeded', completed_at = NOW() WHERE id = $1`,
+          [scrapeId]
+        );
+      } else if (pSuburbs.length === 0 && (cSuburbs.length + fSuburbs.length >= SUBURBS.length)) {
+        await sql.query(
+          `UPDATE scrapes SET status = $1, completed_at = NOW() WHERE id = $2`,
+          [cSuburbs.length > 0 ? 'partial' : 'failed', scrapeId]
+        );
+      }
+    }
 
     // 7. Append an immutable median snapshot for the history time-series.
     const medianPrice = median(listings.map(l => l.price));

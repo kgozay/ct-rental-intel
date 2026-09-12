@@ -1,9 +1,16 @@
-import { useState, useMemo } from 'react';
+import { useMemo } from 'react';
 import { SUBURBS_LIST } from '../utils/suburbs';
 import { PRICE_PRESETS, DEFAULT_FILTERS } from '../constants/filterConstants';
 
-export default function FilterBar({ filters, setFilters, listings = [], shortlistedCount = 0 }) {
-  const [showMore, setShowMore] = useState(false);
+export default function SearchIntentBar({
+  filters,
+  setFilters,
+  listings = [],
+  onToggleMoreFilters,
+  showMoreFilters,
+  activeSecondaryFilterCount = 0,
+}) {
+  const isAllSuburbs = filters.suburbs.length === SUBURBS_LIST.length;
 
   // Live listing counts per suburb
   const suburbCounts = useMemo(() => {
@@ -14,23 +21,18 @@ export default function FilterBar({ filters, setFilters, listings = [], shortlis
     return counts;
   }, [listings]);
 
-  const isAllSuburbs = filters.suburbs.length === SUBURBS_LIST.length;
-
   const handleSelectAllSuburbs = () => {
     setFilters(prev => ({ ...prev, suburbs: [...SUBURBS_LIST] }));
   };
 
   const handleToggleSuburb = (suburb) => {
     setFilters(prev => {
-      // If currently all are selected, 1-click isolates the clicked suburb
       if (prev.suburbs.length === SUBURBS_LIST.length) {
         return { ...prev, suburbs: [suburb] };
       }
-      // If this is the only suburb selected and clicked again, reset to all
       if (prev.suburbs.length === 1 && prev.suburbs[0] === suburb) {
         return { ...prev, suburbs: [...SUBURBS_LIST] };
       }
-      // Otherwise toggle the suburb in or out
       const exists = prev.suburbs.includes(suburb);
       const updated = exists
         ? prev.suburbs.filter(s => s !== suburb)
@@ -39,7 +41,6 @@ export default function FilterBar({ filters, setFilters, listings = [], shortlis
     });
   };
 
-  // Check if any filter is active
   const isFiltered = useMemo(() => {
     return (
       (filters.search && filters.search.trim() !== '') ||
@@ -54,7 +55,6 @@ export default function FilterBar({ filters, setFilters, listings = [], shortlis
     );
   }, [filters]);
 
-  // Active filter chips list
   const activeChips = useMemo(() => {
     const chips = [];
     if (filters.search?.trim()) {
@@ -67,7 +67,7 @@ export default function FilterBar({ filters, setFilters, listings = [], shortlis
     if (!isAllSuburbs) {
       chips.push({
         id: 'suburbs',
-        label: filters.suburbs.length === 1 ? filters.suburbs[0] : `${filters.suburbs.length} suburbs`,
+        label: filters.suburbs.length === 1 ? filters.suburbs[0] : `${filters.suburbs.length} Suburbs`,
         onClear: () => setFilters(prev => ({ ...prev, suburbs: [...SUBURBS_LIST] }))
       });
     }
@@ -81,7 +81,7 @@ export default function FilterBar({ filters, setFilters, listings = [], shortlis
     if (filters.minBeds !== null) {
       chips.push({
         id: 'beds',
-        label: `${filters.minBeds}+ beds`,
+        label: `${filters.minBeds}+ Beds`,
         onClear: () => setFilters(prev => ({ ...prev, minBeds: null }))
       });
     }
@@ -123,7 +123,7 @@ export default function FilterBar({ filters, setFilters, listings = [], shortlis
     if (filters.shortlistOnly) {
       chips.push({
         id: 'shortlist',
-        label: 'Shortlisted',
+        label: 'Shortlisted Only',
         onClear: () => setFilters(prev => ({ ...prev, shortlistOnly: false }))
       });
     }
@@ -131,17 +131,17 @@ export default function FilterBar({ filters, setFilters, listings = [], shortlis
   }, [filters, isAllSuburbs, setFilters]);
 
   return (
-    <div className="bg-paper border-2 border-ink shadow-[3px_3px_0_#111111] mb-6 p-4 md:p-5 transition-all">
-      {/* TOP ROW: SEARCH + PRICE PRESETS + MORE FILTERS TOGGLE */}
-      <div className="flex flex-col md:flex-row md:items-center gap-3.5 pb-3.5 border-b border-ink/10">
+    <section aria-label="Search and Filter Rentals" className="bg-paper border-2 border-ink shadow-[3px_3px_0_#111111] mb-6 p-4 md:p-5">
+      {/* PRIMARY ROW: KEYWORD SEARCH + BEDROOMS + SECONDARY TOGGLE */}
+      <div className="flex flex-col md:flex-row md:items-center gap-3 pb-3 border-b border-ink/10">
         {/* Search input */}
         <div className="relative flex-1 min-w-[200px]">
           <input
             type="text"
             value={filters.search || ''}
             onChange={(e) => setFilters(prev => ({ ...prev, search: e.target.value }))}
-            placeholder="Search address, agency, description..."
-            className="w-full border-2 border-ink bg-white text-ink px-3 py-1.5 text-xs font-bold focus:outline-none focus:ring-2 focus:ring-blue shadow-[1px_1px_0_#111111]"
+            placeholder="Search address, building, agency..."
+            className="w-full border-2 border-ink bg-white text-ink px-3 py-2 text-xs font-bold focus:outline-none focus:ring-2 focus:ring-blue shadow-[1px_1px_0_#111111]"
             aria-label="Keyword search"
           />
           {filters.search && (
@@ -155,12 +155,12 @@ export default function FilterBar({ filters, setFilters, listings = [], shortlis
           )}
         </div>
 
-        {/* Beds Segmented Control */}
-        <div className="flex items-center gap-1">
-          <span className="text-[0.6875rem] font-black uppercase tracking-wider text-ink/50 mr-1 hidden sm:inline">
-            Beds
+        {/* Bedroom Segmented Selector */}
+        <div className="flex items-center gap-1.5 shrink-0">
+          <span className="text-[11px] font-black uppercase tracking-wider text-ink/60 mr-0.5">
+            Beds:
           </span>
-          <div className="inline-flex border-2 border-ink bg-white shadow-[1px_1px_0_#111111]">
+          <div className="inline-flex border-2 border-ink bg-white shadow-[1px_1px_0_#111111]" role="radiogroup" aria-label="Minimum Bedrooms">
             {[
               { label: 'Any', value: null },
               { label: '1+', value: 1 },
@@ -171,8 +171,10 @@ export default function FilterBar({ filters, setFilters, listings = [], shortlis
               return (
                 <button
                   key={opt.label}
+                  role="radio"
+                  aria-checked={active}
                   onClick={() => setFilters(prev => ({ ...prev, minBeds: opt.value }))}
-                  className={`px-2.5 py-1 text-xs font-bold transition-colors cursor-pointer ${
+                  className={`px-3 py-1.5 text-xs font-bold transition-colors cursor-pointer ${
                     active ? 'bg-ink text-paper' : 'text-ink hover:bg-neutral-100'
                   }`}
                 >
@@ -183,24 +185,30 @@ export default function FilterBar({ filters, setFilters, listings = [], shortlis
           </div>
         </div>
 
-        {/* More Filters & Reset Buttons */}
-        <div className="flex items-center gap-2">
+        {/* More Filters Toggle & Reset */}
+        <div className="flex items-center gap-2 shrink-0">
           <button
-            onClick={() => setShowMore(prev => !prev)}
+            onClick={onToggleMoreFilters}
+            aria-expanded={showMoreFilters}
             className={`border-2 border-ink text-xs font-black uppercase px-3 py-1.5 cursor-pointer transition-all shadow-[1px_1px_0_#111111] flex items-center gap-1.5 ${
-              showMore || filters.goodValueOnly || filters.priceDropOnly || filters.availableBefore || filters.shortlistOnly
+              showMoreFilters || activeSecondaryFilterCount > 0
                 ? 'bg-blue text-white border-blue'
                 : 'bg-white text-ink hover:bg-neutral-100'
             }`}
           >
-            <span>Options</span>
-            <span className="text-[0.625rem]">{showMore ? '▲' : '▼'}</span>
+            <span>Filters</span>
+            {activeSecondaryFilterCount > 0 && (
+              <span className="bg-yellow text-ink px-1.5 py-0.2 text-[10px] font-black leading-tight rounded-none">
+                {activeSecondaryFilterCount}
+              </span>
+            )}
+            <span className="text-[10px]">{showMoreFilters ? '▲' : '▼'}</span>
           </button>
 
           {isFiltered && (
             <button
               onClick={() => setFilters(DEFAULT_FILTERS)}
-              className="border-2 border-ink bg-white text-ink text-xs font-black uppercase px-2.5 py-1.5 hover:bg-yellow transition-colors cursor-pointer shadow-[1px_1px_0_#111111]"
+              className="border-2 border-ink bg-white text-ink text-xs font-black uppercase px-3 py-1.5 hover:bg-yellow transition-colors cursor-pointer shadow-[1px_1px_0_#111111]"
               title="Reset all filters"
             >
               Reset
@@ -209,15 +217,15 @@ export default function FilterBar({ filters, setFilters, listings = [], shortlis
         </div>
       </div>
 
-      {/* MIDDLE ROW: SUBURBS (CLEAN PILL SELECTOR) */}
-      <div className="pt-3.5 pb-2">
+      {/* SUBURB ROW */}
+      <div className="pt-3 pb-2">
         <div className="flex flex-wrap items-center gap-1.5">
-          <span className="text-[0.6875rem] font-black uppercase tracking-wider text-ink/50 mr-1">
+          <span className="text-[11px] font-black uppercase tracking-wider text-ink/60 mr-1">
             Suburb:
           </span>
           <button
             onClick={handleSelectAllSuburbs}
-            className={`border-2 border-ink px-2.5 py-0.5 text-xs font-black uppercase cursor-pointer transition-all shadow-[1px_1px_0_#111111] ${
+            className={`border-2 border-ink px-2.5 py-1 text-xs font-black uppercase cursor-pointer transition-all shadow-[1px_1px_0_#111111] ${
               isAllSuburbs
                 ? 'bg-ink text-paper'
                 : 'bg-white text-ink hover:bg-neutral-100'
@@ -232,7 +240,7 @@ export default function FilterBar({ filters, setFilters, listings = [], shortlis
               <button
                 key={sub}
                 onClick={() => handleToggleSuburb(sub)}
-                className={`border-2 border-ink px-2.5 py-0.5 text-xs font-bold cursor-pointer transition-all shadow-[1px_1px_0_#111111] flex items-center gap-1 ${
+                className={`border-2 border-ink px-2.5 py-1 text-xs font-bold cursor-pointer transition-all shadow-[1px_1px_0_#111111] flex items-center gap-1.5 ${
                   isSelected && !isAllSuburbs
                     ? 'bg-blue text-white border-blue'
                     : isAllSuburbs
@@ -242,7 +250,7 @@ export default function FilterBar({ filters, setFilters, listings = [], shortlis
                 title={isAllSuburbs ? `Filter to ${sub}` : `Toggle ${sub}`}
               >
                 <span>{sub}</span>
-                <span className={`text-[0.625rem] ${isSelected && !isAllSuburbs ? 'text-white/80' : 'text-ink/40'}`}>
+                <span className={`text-[10px] font-mono font-bold ${isSelected && !isAllSuburbs ? 'text-white/80' : 'text-ink/40'}`}>
                   {count}
                 </span>
               </button>
@@ -251,9 +259,9 @@ export default function FilterBar({ filters, setFilters, listings = [], shortlis
         </div>
       </div>
 
-      {/* PRICE PRESET CHIPS & SLIDER */}
+      {/* PRICE RANGE ROW */}
       <div className="pt-2 flex flex-wrap items-center gap-2">
-        <span className="text-[0.6875rem] font-black uppercase tracking-wider text-ink/50 mr-1">
+        <span className="text-[11px] font-black uppercase tracking-wider text-ink/60 mr-1">
           Max Rent:
         </span>
         {PRICE_PRESETS.map(preset => {
@@ -262,7 +270,7 @@ export default function FilterBar({ filters, setFilters, listings = [], shortlis
             <button
               key={preset.label}
               onClick={() => setFilters(prev => ({ ...prev, maxPrice: preset.value }))}
-              className={`border-2 border-ink px-2 py-0.5 text-xs font-bold cursor-pointer transition-all shadow-[1px_1px_0_#111111] ${
+              className={`border-2 border-ink px-2.5 py-1 text-xs font-bold cursor-pointer transition-all shadow-[1px_1px_0_#111111] ${
                 isPresetActive
                   ? 'bg-ink text-paper'
                   : 'bg-white text-ink hover:bg-neutral-100'
@@ -283,18 +291,18 @@ export default function FilterBar({ filters, setFilters, listings = [], shortlis
             className="w-24 md:w-32 accent-blue cursor-pointer h-1.5 bg-neutral-200"
             aria-label="Adjust max price slider"
           />
-          <span className="text-xs font-mono font-bold text-blue tabular-nums min-w-[4rem]">
+          <span className="text-xs font-mono font-black text-blue tabular-nums min-w-[4rem]">
             {filters.maxPrice < 80000 ? `R${filters.maxPrice.toLocaleString('en-ZA')}` : 'No cap'}
           </span>
         </div>
       </div>
 
-      {/* EXPANDABLE SECONDARY DRAWER */}
-      {showMore && (
-        <div className="mt-4 pt-3.5 border-t border-ink/10 flex flex-wrap items-center gap-4 bg-paper-light/50">
-          {/* Furnished status */}
+      {/* SECONDARY DISCLOSURE (COLLAPSIBLE) */}
+      {showMoreFilters && (
+        <div className="mt-4 pt-3.5 border-t border-ink/10 flex flex-wrap items-center gap-4 bg-paper/50">
+          {/* Furnishing */}
           <div className="flex items-center gap-1.5">
-            <span className="text-[0.6875rem] font-black uppercase tracking-wider text-ink/50">
+            <span className="text-[11px] font-black uppercase tracking-wider text-ink/60">
               Furnishing:
             </span>
             <div className="inline-flex border-2 border-ink bg-white shadow-[1px_1px_0_#111111]">
@@ -306,7 +314,7 @@ export default function FilterBar({ filters, setFilters, listings = [], shortlis
                 <button
                   key={opt.label}
                   onClick={() => setFilters(prev => ({ ...prev, furnished: opt.value }))}
-                  className={`px-2 py-0.5 text-xs font-bold transition-colors cursor-pointer ${
+                  className={`px-2.5 py-1 text-xs font-bold transition-colors cursor-pointer ${
                     filters.furnished === opt.value ? 'bg-ink text-paper' : 'text-ink hover:bg-neutral-100'
                   }`}
                 >
@@ -316,16 +324,16 @@ export default function FilterBar({ filters, setFilters, listings = [], shortlis
             </div>
           </div>
 
-          {/* Available before date */}
+          {/* Move-in Date */}
           <div className="flex items-center gap-1.5">
-            <span className="text-[0.6875rem] font-black uppercase tracking-wider text-ink/50">
+            <span className="text-[11px] font-black uppercase tracking-wider text-ink/60">
               Available Before:
             </span>
             <input
               type="date"
               value={filters.availableBefore || ''}
               onChange={(e) => setFilters(prev => ({ ...prev, availableBefore: e.target.value }))}
-              className="border-2 border-ink bg-white text-ink px-2 py-0.5 text-xs font-bold shadow-[1px_1px_0_#111111]"
+              className="border-2 border-ink bg-white text-ink px-2 py-1 text-xs font-bold shadow-[1px_1px_0_#111111]"
             />
             {filters.availableBefore && (
               <button
@@ -337,11 +345,11 @@ export default function FilterBar({ filters, setFilters, listings = [], shortlis
             )}
           </div>
 
-          {/* Quick Toggles */}
+          {/* Value and Price Drop Toggles */}
           <div className="flex items-center gap-2">
             <button
               onClick={() => setFilters(prev => ({ ...prev, goodValueOnly: !prev.goodValueOnly }))}
-              className={`border-2 border-ink px-2.5 py-0.5 text-xs font-bold cursor-pointer transition-all shadow-[1px_1px_0_#111111] ${
+              className={`border-2 border-ink px-3 py-1 text-xs font-bold cursor-pointer transition-all shadow-[1px_1px_0_#111111] ${
                 filters.goodValueOnly ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-ink hover:bg-neutral-100'
               }`}
             >
@@ -349,34 +357,26 @@ export default function FilterBar({ filters, setFilters, listings = [], shortlis
             </button>
             <button
               onClick={() => setFilters(prev => ({ ...prev, priceDropOnly: !prev.priceDropOnly }))}
-              className={`border-2 border-ink px-2.5 py-0.5 text-xs font-bold cursor-pointer transition-all shadow-[1px_1px_0_#111111] ${
+              className={`border-2 border-ink px-3 py-1 text-xs font-bold cursor-pointer transition-all shadow-[1px_1px_0_#111111] ${
                 filters.priceDropOnly ? 'bg-blue text-white border-blue' : 'bg-white text-ink hover:bg-neutral-100'
               }`}
             >
               ↓ Price Drops
             </button>
-            <button
-              onClick={() => setFilters(prev => ({ ...prev, shortlistOnly: !prev.shortlistOnly }))}
-              className={`border-2 border-ink px-2.5 py-0.5 text-xs font-bold cursor-pointer transition-all shadow-[1px_1px_0_#111111] ${
-                filters.shortlistOnly ? 'bg-ink text-paper' : 'bg-white text-ink hover:bg-neutral-100'
-              }`}
-            >
-              ♥ Shortlisted ({shortlistedCount})
-            </button>
           </div>
         </div>
       )}
 
-      {/* ACTIVE FILTER CHIPS ROW (IF ANY ACTIVE) */}
+      {/* ACTIVE FILTER CHIPS ROW */}
       {activeChips.length > 0 && (
         <div className="mt-3 pt-2.5 border-t border-ink/10 flex flex-wrap items-center gap-1.5">
-          <span className="text-[0.625rem] font-black uppercase tracking-wider text-ink/40 mr-1">
+          <span className="text-[10px] font-black uppercase tracking-wider text-ink/50 mr-1">
             Active:
           </span>
           {activeChips.map(chip => (
             <span
               key={chip.id}
-              className="filter-chip inline-flex items-center gap-1.5 border-2 border-ink bg-ink text-paper text-xs font-black uppercase px-2.5 py-0.5 shadow-[1px_1px_0_#111111]"
+              className="filter-chip inline-flex items-center gap-1.5 border-2 border-ink bg-ink text-paper text-xs font-bold uppercase px-2.5 py-0.5 shadow-[1px_1px_0_#111111]"
             >
               <span>{chip.label}</span>
               <button
@@ -390,6 +390,6 @@ export default function FilterBar({ filters, setFilters, listings = [], shortlis
           ))}
         </div>
       )}
-    </div>
+    </section>
   );
 }

@@ -1,62 +1,14 @@
-import { useState, useMemo, useEffect, useDeferredValue } from 'react';
+import { useState, useMemo } from 'react';
 import ValueBadge from './ValueBadge';
 import { SUBURBS_LIST } from '../utils/suburbs';
-
-const DEFAULT_FILTERS = {
-  search: '',
-  suburbs: [...SUBURBS_LIST],
-  maxPrice: 80000,
-  minBeds: null,
-  furnished: null,
-  goodValueOnly: false,
-  priceDropOnly: false,
-  availableBefore: '',
-  shortlistOnly: false,
-};
+import { DEFAULT_FILTERS } from '../constants/filterConstants';
+import { exportCsv } from '../utils/exportCsv';
 
 function daysAgo(isoString) {
   if (!isoString) return null;
   const diff = Date.now() - new Date(isoString).getTime();
   if (isNaN(diff)) return null;
   return Math.max(0, Math.floor(diff / 86400000));
-}
-
-function exportCsv(rows) {
-  const headers = ['Suburb', 'Address', 'Type', 'Beds', 'Baths', 'Price (ZAR)', 'Size (m²)', 'R/m²', 'Value', 'Furnished', 'Available', 'Days Listed', 'Agency', 'URL'];
-  const escape = (v) => {
-    if (v === null || v === undefined) return '';
-    const s = String(v);
-    return s.includes(',') || s.includes('"') || s.includes('\n') ? `"${s.replace(/"/g, '""')}"` : s;
-  };
-  const csv = [
-    headers.join(','),
-    ...rows.map(l => [
-      l.suburb,
-      l.address ?? '',
-      l.property_type,
-      l.bedrooms ?? '',
-      l.bathrooms ?? '',
-      l.price,
-      l.size_m2 ?? '',
-      l.price_per_m2 ?? '',
-      l.value_score > 1.15 ? 'Good value' : l.value_score < 0.85 ? 'Expensive' : 'Fair',
-      l.furnished === true ? 'Yes' : l.furnished === false ? 'No' : '',
-      l.available_date ?? '',
-      daysAgo(l.created_at) ?? '',
-      l.agency_name ?? '',
-      l.url
-    ].map(escape).join(','))
-  ].join('\n');
-
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `ct-rentals-${new Date().toISOString().split('T')[0]}.csv`;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
 }
 
 function SortHdr({ field, title, sortField, sortAsc, handleSort, children }) {
@@ -139,14 +91,20 @@ export default function ListingsTable({ listings, filteredListings, filters, set
 
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
+  const [prevResetKey, setPrevResetKey] = useState({ filters, sortField, sortAsc });
 
-  useEffect(() => {
+  if (prevResetKey.filters !== filters || prevResetKey.sortField !== sortField || prevResetKey.sortAsc !== sortAsc) {
+    setPrevResetKey({ filters, sortField, sortAsc });
     setCurrentPage(1);
-  }, [filters, sortField, sortAsc]);
+  }
 
   const totalCount = sortedListings.length;
   const numPageSize = pageSize === 'all' ? totalCount : Number(pageSize);
   const totalPages = pageSize === 'all' ? 1 : Math.max(1, Math.ceil(totalCount / (numPageSize || 25)));
+
+  if (currentPage > totalPages && totalPages > 0) {
+    setCurrentPage(totalPages);
+  }
 
   const paginatedListings = useMemo(() => {
     if (pageSize === 'all') return sortedListings;

@@ -280,7 +280,7 @@ Return pure JSON conforming to the requested schema.`;
               },
               generatedAt: new Date().toISOString()
             });
-          } catch (jsonErr) {
+          } catch {
             return res.status(200).json({
               analysis: rawText.trim(),
               structured: fallbackData.structured,

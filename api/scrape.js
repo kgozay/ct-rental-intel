@@ -2,8 +2,8 @@ const { sql } = require('./db');
 const { SUBURBS } = require('./suburbs');
 const { resolveBaseUrl, launchSuburbRun } = require('./launcher');
 
-// Manual-only cooldown — prevents re-scraping more than once per day.
-const COOLDOWN_HOURS = 24;
+// Manual-only cooldown — prevents re-scraping more than once every 2 days.
+const COOLDOWN_HOURS = 48;
 
 // Enrichment roughly doubles the per-listing Apify cost (listing + enrichment events).
 // Toggle off via APIFY_ENRICH=false once we confirm floor_area survives without it.
@@ -16,12 +16,11 @@ const ENRICH = process.env.APIFY_ENRICH !== 'false';
  * in api/ingest.js, which keeps every function call well under 60s.
  */
 module.exports = async function handler(req, res) {
-  // Only allow POST (manual refresh) or GET with force=true for cron.
+  // Only allow POST (user-initiated refresh) or authorized forced trigger with valid secret.
   const force = req?.query?.force === 'true';
-  const isCron = req.method === 'GET' && force;
-  if (req.method !== 'POST' && !isCron) {
+  if (req.method !== 'POST' && !(force && req.method === 'GET')) {
     res.setHeader('Allow', ['POST']);
-    return res.status(405).json({ error: `Method ${req.method} not allowed` });
+    return res.status(405).json({ error: `Method ${req.method} not allowed. Scrapes are on-demand only via POST.` });
   }
 
   const INGEST_SECRET = process.env.INGEST_SECRET;
@@ -55,7 +54,9 @@ module.exports = async function handler(req, res) {
 
     if (!force) {
       try {
-        const lastRows = await sql.query(`SELECT scraped_at FROM scrapes ORDER BY id DESC LIMIT 1`);
+        const lastRows = await sql.query(
+          `SELECT scraped_at FROM scrapes WHERE status IN ('succeeded', 'partial', 'running') OR status IS NULL ORDER BY id DESC LIMIT 1`
+        );
         if (lastRows.length > 0) {
           const lastScraped = new Date(lastRows[0].scraped_at);
           const ageMs = Date.now() - lastScraped.getTime();
@@ -77,17 +78,23 @@ module.exports = async function handler(req, res) {
       }
     }
 
-    // Ensure pending_suburbs column exists
+    // Ensure pending_suburbs and lifecycle columns exist
     await sql.query(`ALTER TABLE scrapes ADD COLUMN IF NOT EXISTS pending_suburbs TEXT[];`);
+    await sql.query(`ALTER TABLE scrapes ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'pending';`);
+    await sql.query(`ALTER TABLE scrapes ADD COLUMN IF NOT EXISTS completed_suburbs TEXT[] DEFAULT '{}';`);
+    await sql.query(`ALTER TABLE scrapes ADD COLUMN IF NOT EXISTS failed_suburbs TEXT[] DEFAULT '{}';`);
+    await sql.query(`ALTER TABLE scrapes ADD COLUMN IF NOT EXISTS completed_at TIMESTAMPTZ;`);
+    await sql.query(`ALTER TABLE scrapes ADD COLUMN IF NOT EXISTS error_summary TEXT;`);
 
     // Split suburbs into an initial batch of 4 (under Apify free tier 5-concurrency cap)
     // and queue the remaining 3 to be launched by /api/ingest as slots free up.
     const initialSuburbs = SUBURBS.slice(0, 4);
     const pendingSuburbs = SUBURBS.slice(4).map(s => s.name);
 
-    // 1. Create the scrape session up front with pending suburbs.
+    // 1. Create the scrape session up front with pending suburbs and status running.
     const scrapeRow = await sql.query(
-      `INSERT INTO scrapes (suburbs, pending_suburbs, listing_count, dropped_count) VALUES ($1, $2, 0, 0) RETURNING id`,
+      `INSERT INTO scrapes (suburbs, pending_suburbs, completed_suburbs, failed_suburbs, status, listing_count, dropped_count) 
+       VALUES ($1, $2, '{}', '{}', 'running', 0, 0) RETURNING id`,
       [SUBURBS.map(s => s.name), pendingSuburbs]
     );
     const scrapeId = scrapeRow[0].id;

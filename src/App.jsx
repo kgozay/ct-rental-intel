@@ -1,8 +1,13 @@
 import { useState, useEffect, useMemo, useRef, Suspense, lazy } from 'react';
 import { Link } from 'react-router-dom';
 import ListingsTable from './components/ListingsTable';
-import FilterBar from './components/FilterBar';
+import SearchIntentBar from './components/SearchIntentBar';
+import ResultsToolbar from './components/ResultsToolbar';
+import ListingCardView from './components/ListingCardView';
+import FirstRunState from './components/FirstRunState';
+import DataStatusBar from './components/DataStatusBar';
 import { SUBURBS_LIST } from './utils/suburbs';
+import { exportCsv } from './utils/exportCsv';
 
 const PriceChart = lazy(() => import('./components/PriceChart'));
 const MapView = lazy(() => import('./components/MapView'));
@@ -23,11 +28,22 @@ export default function App() {
   const [listings, setListings] = useState([]);
   const [history, setHistory] = useState([]);
   const [lastScraped, setLastScraped] = useState(null);
+  const [dataStatus, setDataStatus] = useState(null);
 
   const [loading, setLoading] = useState(true);
   const [scraping, setScraping] = useState(false);
   const [notice, setNotice] = useState(null);
-  const [activeTab, setActiveTab] = useState('table');
+  const [activeTab, setActiveTab] = useState(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const view = params.get('view');
+      const valid = ['table', 'cards', 'map', 'charts', 'compare', 'ai', 'shortlist'];
+      return valid.includes(view) ? view : 'table';
+    } catch {
+      return 'table';
+    }
+  });
+  const [showMoreFilters, setShowMoreFilters] = useState(false);
   const [selectedListing, setSelectedListing] = useState(null);
 
   // Bedroom filter for the history chart (drives a separate /api/history fetch)
@@ -91,10 +107,11 @@ export default function App() {
     }
   });
 
-  // Keep URL in sync with active filters for shareable deep links
+  // Keep URL in sync with active filters and view for shareable deep links
   useEffect(() => {
     try {
       const params = new URLSearchParams();
+      if (activeTab && activeTab !== 'table') params.set('view', activeTab);
       if (filters.search) params.set('search', filters.search);
       if (filters.suburbs.length < SUBURBS_LIST.length) params.set('suburbs', filters.suburbs.join(','));
       if (filters.maxPrice < 80000) params.set('maxPrice', String(filters.maxPrice));
@@ -108,8 +125,10 @@ export default function App() {
       const query = params.toString();
       const nextUrl = query ? `${window.location.pathname}?${query}` : window.location.pathname;
       window.history.replaceState(null, '', nextUrl);
-    } catch {}
-  }, [filters]);
+    } catch (err) {
+      console.debug('Failed to sync filters to URL state:', err);
+    }
+  }, [filters, activeTab]);
 
   const pollRef = useRef(null);
 
@@ -123,6 +142,7 @@ export default function App() {
         const listData = await listRes.json();
         setListings(listData.listings || []);
         setLastScraped(listData.lastScraped);
+        setDataStatus(listData.dataStatus || null);
         fetchedLastScraped = listData.lastScraped;
       }
 
@@ -175,7 +195,7 @@ export default function App() {
           : null;
         setNotice({
           type: 'info',
-          text: `Data is still fresh — you can refresh once per day to save credits.${nextText ? ` Next refresh available ${nextText}.` : ''}`
+          text: `Data is still fresh — updates are limited to once every 2 days (48h cooldown).${nextText ? ` Next snapshot available ${nextText}.` : ''}`
         });
         setScraping(false);
       } else if (response.ok && data.started) {
@@ -231,7 +251,22 @@ export default function App() {
     return true;
   }), [listings, filters, shortlisted]);
 
-  const activeSuburbsCount = new Set(filteredListings.map(l => l.suburb)).size;
+  const displayedListings = useMemo(() => {
+    if (activeTab === 'shortlist') {
+      return filteredListings.filter(l => shortlisted.has(l.url));
+    }
+    return filteredListings;
+  }, [filteredListings, activeTab, shortlisted]);
+
+  const activeSecondaryFilterCount = useMemo(() => {
+    let count = 0;
+    if (filters.furnished !== null) count++;
+    if (filters.goodValueOnly) count++;
+    if (filters.priceDropOnly) count++;
+    if (filters.availableBefore) count++;
+    return count;
+  }, [filters]);
+
   const goodValueCount = filteredListings.filter(l => l.value_score > 1.15).length;
   const isFiltered = filteredListings.length !== listings.length;
 
@@ -243,26 +278,6 @@ export default function App() {
       ? `R ${rates[mid]}`
       : `R ${Math.round((rates[mid - 1] + rates[mid]) / 2)}`;
   }
-
-  const bestSuburb = useMemo(() => {
-    const groups = {};
-    filteredListings.forEach(l => {
-      if (l.price_per_m2 !== null && l.price_per_m2 > 0) {
-        if (!groups[l.suburb]) groups[l.suburb] = [];
-        groups[l.suburb].push(l.price_per_m2);
-      }
-    });
-    let best = null;
-    let bestMedian = Infinity;
-    Object.entries(groups).forEach(([suburb, ppm2]) => {
-      if (ppm2.length < 2) return;
-      const sorted = [...ppm2].sort((a, b) => a - b);
-      const mid = Math.floor(sorted.length / 2);
-      const median = sorted.length % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
-      if (median < bestMedian) { bestMedian = median; best = suburb; }
-    });
-    return best;
-  }, [filteredListings]);
 
   const suburbMedianPrices = useMemo(() => {
     const groups = {};
@@ -280,6 +295,8 @@ export default function App() {
     });
     return result;
   }, [listings]);
+
+  const isFirstRun = !loading && (dataStatus?.state === 'empty' || (listings.length === 0 && !lastScraped));
 
   const handleDrillDown = (suburb, beds) => {
     setFilters(prev => ({ ...prev, suburbs: [suburb], minBeds: beds }));
@@ -319,185 +336,171 @@ export default function App() {
         </div>
       </header>
 
-      {/* REFRESH NOTICE BANNER */}
-      {notice && (
-        <div
-          className={`border-2 border-ink shadow-[3px_3px_0_#111111] px-4 py-2.5 mb-5 flex items-center justify-between font-bold text-xs ${
-            notice.type === 'error' ? 'bg-bred text-white' : 'bg-lime text-ink'
-          }`}
-        >
-          <span>{notice.text}</span>
-          <button
-            onClick={() => setNotice(null)}
-            className="font-black text-sm px-2 cursor-pointer hover:opacity-70"
-            aria-label="Dismiss notice"
-          >
-            ✕
-          </button>
-        </div>
-      )}
-
-      {/* ERGONOMIC TOP-LEVEL FILTER BAR */}
-      <FilterBar
-        filters={filters}
-        setFilters={setFilters}
-        listings={listings}
-        shortlistedCount={shortlisted.size}
+      {/* VISIBLE DATA STATUS & PROVENANCE BAR */}
+      <DataStatusBar
+        dataStatus={dataStatus}
+        onRefresh={handleRefresh}
+        isRefreshing={scraping}
+        feedbackMessage={notice ? { type: notice.type === 'error' ? 'error' : 'info', message: notice.text } : null}
+        onClearFeedback={() => setNotice(null)}
       />
 
-      {/* DASHBOARD NAVIGATION TAB BAR */}
-      <div className="flex flex-wrap gap-2.5 mb-5 select-none" role="tablist">
-        {[
-          { id: 'table', label: 'Table' },
-          { id: 'charts', label: 'Charts' },
-          { id: 'map', label: 'Map' },
-          { id: 'compare', label: 'Suburbs' },
-          { id: 'ai', label: 'AI Intelligence' }
-        ].map(tab => {
-          const isActive = activeTab === tab.id;
-          return (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              role="tab"
-              aria-selected={isActive}
-              className={`border-2 border-ink font-black uppercase text-xs sm:text-sm px-5 py-2 cursor-pointer transition-all duration-100 ${
-                isActive
-                  ? 'bg-blue text-white translate-x-[1px] translate-y-[1px] shadow-[1px_1px_0_#111111]'
-                  : 'bg-paper text-ink shadow-[3px_3px_0_#111111] hover:translate-x-[-1px] hover:translate-y-[-1px] hover:shadow-[4px_4px_0_#111111] active:translate-x-[1px] active:translate-y-[1px] active:shadow-[1px_1px_0_#111111]'
-              }`}
-            >
-              {tab.label}
-            </button>
-          );
-        })}
-      </div>
-
-      {/* CALM KPI BENCHMARKS GRID */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3.5 mb-6 select-none">
-        <div className="kpi-card bg-yellow border-2 border-ink shadow-[3px_3px_0_#111111] p-3.5 rounded-none">
-          <div className="text-2xl md:text-3xl font-black font-mono tabular-nums leading-none text-ink">
-            {filteredListings.length}
-          </div>
-          <div className="text-[0.625rem] font-black uppercase tracking-wider text-ink/70 mt-1.5">
-            Listings{isFiltered ? <span className="ml-1 opacity-70">(filtered)</span> : ''}
-          </div>
-        </div>
-        <div className="kpi-card bg-white border-2 border-ink shadow-[3px_3px_0_#111111] p-3.5 rounded-none">
-          <div className="text-2xl md:text-3xl font-black font-mono tabular-nums leading-none text-ink">
-            {activeSuburbsCount}
-          </div>
-          <div className="text-[0.625rem] font-black uppercase tracking-wider text-ink/70 mt-1.5">
-            Suburbs
-          </div>
-        </div>
-        <div className="kpi-card bg-white border-2 border-ink shadow-[3px_3px_0_#111111] p-3.5 rounded-none">
-          <div className="text-2xl md:text-3xl font-black font-mono tabular-nums leading-none text-ink">
-            {medianRate}
-          </div>
-          <div className="text-[0.625rem] font-black uppercase tracking-wider text-ink/70 mt-1.5">
-            Median R/m²
-          </div>
-        </div>
-        <div className="kpi-card bg-white border-2 border-ink shadow-[3px_3px_0_#111111] p-3.5 rounded-none">
-          <div className="text-2xl md:text-3xl font-black font-mono tabular-nums leading-none text-ink">
-            {shortlisted.size > 0 ? shortlisted.size : goodValueCount}
-          </div>
-          <div className="text-[0.625rem] font-black uppercase tracking-wider text-ink/70 mt-1.5">
-            {shortlisted.size > 0 ? 'Shortlisted' : 'Good Value'}
-          </div>
-        </div>
-        <div className="kpi-card bg-lime border-2 border-ink shadow-[3px_3px_0_#111111] p-3.5 rounded-none">
-          <div className="text-lg md:text-xl font-black leading-tight text-ink line-clamp-2">
-            {bestSuburb ?? '—'}
-          </div>
-          <div className="text-[0.625rem] font-black uppercase tracking-wider text-ink/70 mt-1.5">
-            Best Value Suburb
-          </div>
-        </div>
-      </div>
-
-      {/* RENDER VIEW TAB CONTENT */}
-      {loading ? (
-        <div className="border-[3px] border-ink bg-white p-6 shadow-[6px_6px_0_#111111] animate-pulse">
-          <div className="flex justify-between items-center mb-6">
-            <div className="h-6 w-48 bg-neutral-200 border border-ink/20" />
-            <div className="h-6 w-32 bg-neutral-200 border border-ink/20" />
-          </div>
-          <div className="space-y-3 mb-6">
-            <div className="h-10 bg-neutral-100 border border-ink/10 w-full" />
-            <div className="h-10 bg-neutral-100 border border-ink/10 w-full" />
-            <div className="h-10 bg-neutral-100 border border-ink/10 w-full" />
-            <div className="h-10 bg-neutral-100 border border-ink/10 w-full" />
-          </div>
-          <div className="text-center text-neutral-400 font-black text-xs uppercase tracking-wider py-2">
-            ✦ Fetching live rental market intelligence...
-          </div>
-        </div>
+      {/* FIRST RUN EMPTY STATE */}
+      {isFirstRun ? (
+        <FirstRunState onStartScrape={handleRefresh} isStarting={scraping} />
       ) : (
-        <main>
-          <Suspense
-            fallback={
-              <div className="border-[3px] border-ink bg-white p-16 text-center shadow-[6px_6px_0_#111111]">
-                <div className="text-neutral-400 font-extrabold text-lg animate-pulse">
-                  ⏳ Loading view...
-                </div>
+        <>
+          {/* SEARCH INTENT BAR */}
+          <SearchIntentBar
+            filters={filters}
+            setFilters={setFilters}
+            listings={listings}
+            onToggleMoreFilters={() => setShowMoreFilters(prev => !prev)}
+            showMoreFilters={showMoreFilters}
+            activeSecondaryFilterCount={activeSecondaryFilterCount}
+          />
+
+          {/* 3 STABLE KPI BENCHMARKS */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6 select-none">
+            <div className="kpi-card bg-yellow border-2 border-ink shadow-[3px_3px_0_#111111] p-3.5">
+              <div className="text-2xl md:text-3xl font-black font-mono tabular-nums leading-none text-ink">
+                {displayedListings.length}
               </div>
-            }
-          >
-            {activeTab === 'table' && (
-              <ListingsTable
-                listings={listings}
-                filteredListings={filteredListings}
-                filters={filters}
-                setFilters={setFilters}
-                shortlisted={shortlisted}
-                toggleShortlist={toggleShortlist}
-                lastVisit={lastVisit}
-                onSelectListing={setSelectedListing}
-                selectedListingUrl={selectedListing?.url}
-              />
-            )}
+              <div className="text-[11px] font-black uppercase tracking-wider text-ink/70 mt-1.5">
+                Matching Rentals{isFiltered ? ' (filtered)' : ''}
+              </div>
+            </div>
 
-            {activeTab === 'charts' && (
-              <PriceChart
-                listings={filteredListings}
-                history={history}
-                historyBeds={historyBeds}
-                setHistoryBeds={setHistoryBeds}
-                onDrillDown={handleDrillDown}
-                theme={theme}
-              />
-            )}
+            <div className="kpi-card bg-white border-2 border-ink shadow-[3px_3px_0_#111111] p-3.5">
+              <div className="text-2xl md:text-3xl font-black font-mono tabular-nums leading-none text-ink">
+                {goodValueCount}
+              </div>
+              <div className="text-[11px] font-black uppercase tracking-wider text-ink/70 mt-1.5">
+                Value Opportunities
+              </div>
+            </div>
 
-            {activeTab === 'map' && (
-              <MapView
-                listings={filteredListings}
-                theme={theme}
-                onSelectListing={setSelectedListing}
-                onFilterSuburb={(suburb) => {
-                  setFilters(prev => ({ ...prev, suburbs: [suburb] }));
-                  setActiveTab('table');
-                }}
-              />
-            )}
+            <div className="kpi-card bg-white border-2 border-ink shadow-[3px_3px_0_#111111] p-3.5">
+              <div className="text-2xl md:text-3xl font-black font-mono tabular-nums leading-none text-ink">
+                {medianRate}
+              </div>
+              <div className="text-[11px] font-black uppercase tracking-wider text-ink/70 mt-1.5">
+                Median Rate (R/m²)
+              </div>
+            </div>
+          </div>
 
-            {activeTab === 'compare' && (
-              <SuburbComparison
-                listings={filteredListings}
-                history={history}
-                onDrillDown={handleDrillDown}
-              />
-            )}
+          {/* RESULTS TOOLBAR */}
+          <ResultsToolbar
+            totalCount={displayedListings.length}
+            activeTab={activeTab}
+            onTabChange={setActiveTab}
+            shortlistedCount={shortlisted.size}
+            onExportCsv={() => exportCsv(displayedListings)}
+            showExport={activeTab === 'table' || activeTab === 'cards' || activeTab === 'shortlist'}
+          />
 
-            {activeTab === 'ai' && (
-              <AIPanel
-                filteredListings={filteredListings}
-                filters={filters}
-              />
-            )}
-          </Suspense>
-        </main>
+          {/* RENDER VIEW TAB CONTENT */}
+          {loading ? (
+            <div className="border-[3px] border-ink bg-white p-6 shadow-[6px_6px_0_#111111] animate-pulse">
+              <div className="flex justify-between items-center mb-6">
+                <div className="h-6 w-48 bg-neutral-200 border border-ink/20" />
+                <div className="h-6 w-32 bg-neutral-200 border border-ink/20" />
+              </div>
+              <div className="space-y-3 mb-6">
+                <div className="h-10 bg-neutral-100 border border-ink/10 w-full" />
+                <div className="h-10 bg-neutral-100 border border-ink/10 w-full" />
+                <div className="h-10 bg-neutral-100 border border-ink/10 w-full" />
+                <div className="h-10 bg-neutral-100 border border-ink/10 w-full" />
+              </div>
+              <div className="text-center text-neutral-400 font-black text-xs uppercase tracking-wider py-2">
+                ✦ Fetching live rental market intelligence...
+              </div>
+            </div>
+          ) : (
+            <main>
+              <Suspense
+                fallback={
+                  <div className="border-[3px] border-ink bg-white p-16 text-center shadow-[6px_6px_0_#111111]">
+                    <div className="text-neutral-400 font-extrabold text-lg animate-pulse">
+                      ⏳ Loading view...
+                    </div>
+                  </div>
+                }
+              >
+                {activeTab === 'table' && (
+                  <ListingsTable
+                    listings={listings}
+                    filteredListings={displayedListings}
+                    filters={filters}
+                    setFilters={setFilters}
+                    shortlisted={shortlisted}
+                    toggleShortlist={toggleShortlist}
+                    lastVisit={lastVisit}
+                    onSelectListing={setSelectedListing}
+                    selectedListingUrl={selectedListing?.url}
+                  />
+                )}
+
+                {activeTab === 'cards' && (
+                  <ListingCardView
+                    listings={displayedListings}
+                    onSelectListing={setSelectedListing}
+                    shortlisted={shortlisted}
+                    onToggleShortlist={toggleShortlist}
+                  />
+                )}
+
+                {activeTab === 'shortlist' && (
+                  <ListingCardView
+                    listings={displayedListings}
+                    onSelectListing={setSelectedListing}
+                    shortlisted={shortlisted}
+                    onToggleShortlist={toggleShortlist}
+                  />
+                )}
+
+                {activeTab === 'charts' && (
+                  <PriceChart
+                    listings={filteredListings}
+                    history={history}
+                    historyBeds={historyBeds}
+                    setHistoryBeds={setHistoryBeds}
+                    onDrillDown={handleDrillDown}
+                    theme={theme}
+                  />
+                )}
+
+                {activeTab === 'map' && (
+                  <MapView
+                    listings={filteredListings}
+                    theme={theme}
+                    onSelectListing={setSelectedListing}
+                    onFilterSuburb={(suburb) => {
+                      setFilters(prev => ({ ...prev, suburbs: [suburb] }));
+                      setActiveTab('table');
+                    }}
+                  />
+                )}
+
+                {activeTab === 'compare' && (
+                  <SuburbComparison
+                    listings={filteredListings}
+                    history={history}
+                    onDrillDown={handleDrillDown}
+                  />
+                )}
+
+                {activeTab === 'ai' && (
+                  <AIPanel
+                    filteredListings={filteredListings}
+                    filters={filters}
+                  />
+                )}
+              </Suspense>
+            </main>
+          )}
+        </>
       )}
       {/* LISTING DETAIL DRAWER */}
       {selectedListing && (

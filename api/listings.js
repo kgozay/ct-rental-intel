@@ -1,5 +1,6 @@
 const { sql } = require('./db');
 const { SUBURBS } = require('./suburbs');
+const { getConfidenceLevel } = require('./confidence');
 const VALID_SUBURB_NAMES = new Set(SUBURBS.map(s => s.name));
 
 module.exports = async function handler(req, res) {
@@ -19,18 +20,34 @@ module.exports = async function handler(req, res) {
     let queryParams = [];
     let paramIdx = 1;
 
-    // Fetch the latest scrape timestamp to surface in the UI header.
-    const latestScrapeResult = await sql.query(
-      `SELECT id, scraped_at FROM scrapes ORDER BY id DESC LIMIT 1`
+    // Fetch recent scrapes to evaluate dataStatus and lifecycle
+    const latestScrapes = await sql.query(
+      `SELECT id, scraped_at, status, completed_suburbs, failed_suburbs, completed_at, listing_count
+       FROM scrapes ORDER BY id DESC LIMIT 5`
     );
-    const lastScraped = latestScrapeResult.length > 0 ? latestScrapeResult[0].scraped_at : null;
 
-    if (latestScrapeResult.length === 0) {
+    if (latestScrapes.length === 0) {
       return res.status(200).json({
         listings: [],
         medians: {},
         lastScraped: null,
-        totalCount: 0
+        totalCount: 0,
+        dataStatus: {
+          state: 'empty',
+          source: 'Property24 via Apify',
+          scrapeId: null,
+          startedAt: null,
+          completedAt: null,
+          lastSuccessfulScrapeAt: null,
+          ageHours: null,
+          expectedSuburbs: SUBURBS.length,
+          completedSuburbs: [],
+          failedSuburbs: [],
+          listingCount: 0,
+          isRefreshing: false,
+          cooldownHours: 48
+        },
+        comparables: {}
       });
     }
 
@@ -114,6 +131,70 @@ module.exports = async function handler(req, res) {
       medians[sub] = median;
     }
 
+    // Evaluate dataStatus
+    const activeScrape = latestScrapes.find(s => s.status === 'running') || null;
+    const lastSuccessScrape = latestScrapes.find(s => s.status === 'succeeded' || (!s.status && s.listing_count > 0)) || null;
+    const lastPartialScrape = latestScrapes.find(s => s.status === 'partial') || null;
+    const referenceScrape = lastSuccessScrape || lastPartialScrape || latestScrapes[0];
+
+    const lastSuccessfulScrapeAt = referenceScrape ? referenceScrape.scraped_at : null;
+    const ageHours = lastSuccessfulScrapeAt
+      ? (Date.now() - new Date(lastSuccessfulScrapeAt).getTime()) / (3600 * 1000)
+      : null;
+
+    let state = 'live';
+    if (listings.length === 0) {
+      state = 'empty';
+    } else if (referenceScrape?.status === 'partial' || (referenceScrape?.failed_suburbs && referenceScrape.failed_suburbs.length > 0)) {
+      state = 'partial';
+    } else if (ageHours !== null && ageHours > 48) {
+      state = 'cached';
+    }
+
+    const dataStatus = {
+      state,
+      source: 'Property24 via Apify',
+      scrapeId: referenceScrape ? referenceScrape.id : null,
+      startedAt: referenceScrape ? referenceScrape.scraped_at : null,
+      completedAt: referenceScrape ? referenceScrape.completed_at : null,
+      lastSuccessfulScrapeAt,
+      ageHours: ageHours !== null ? Math.round(ageHours * 10) / 10 : null,
+      expectedSuburbs: SUBURBS.length,
+      completedSuburbs: referenceScrape?.completed_suburbs || [],
+      failedSuburbs: referenceScrape?.failed_suburbs || [],
+      listingCount: listings.length,
+      isRefreshing: Boolean(activeScrape),
+      cooldownHours: 48
+    };
+
+    // Compute comparables per suburb
+    const suburbStats = {};
+    listings.forEach(item => {
+      if (!suburbStats[item.suburb]) {
+        suburbStats[item.suburb] = { prices: [], ppms: [] };
+      }
+      if (item.price) suburbStats[item.suburb].prices.push(item.price);
+      if (item.price_per_m2) suburbStats[item.suburb].ppms.push(item.price_per_m2);
+    });
+
+    const comparables = {};
+    for (const sub of SUBURBS) {
+      const data = suburbStats[sub.name] || { prices: [], ppms: [] };
+      const sampleSize = data.ppms.length;
+      const confidence = getConfidenceLevel(sampleSize);
+      const prices = data.prices.sort((a, b) => a - b);
+      const ppms = data.ppms.sort((a, b) => a - b);
+      const midPrice = Math.floor(prices.length / 2);
+      const midPpm = Math.floor(ppms.length / 2);
+
+      comparables[sub.name] = {
+        sampleSize,
+        medianPrice: prices.length > 0 ? (prices.length % 2 !== 0 ? prices[midPrice] : Math.round((prices[midPrice - 1] + prices[midPrice]) / 2)) : null,
+        medianPpm2: ppms.length > 0 ? (ppms.length % 2 !== 0 ? ppms[midPpm] : Math.round((ppms[midPpm - 1] + ppms[midPpm]) / 2)) : null,
+        confidence
+      };
+    }
+
     return res.status(200).json({
       listings: listings.map(l => ({
         ...l,
@@ -129,8 +210,10 @@ module.exports = async function handler(req, res) {
         created_at: l.created_at ? new Date(l.created_at).toISOString() : null
       })),
       medians,
-      lastScraped,
-      totalCount: listings.length
+      lastScraped: lastSuccessfulScrapeAt,
+      totalCount: listings.length,
+      dataStatus,
+      comparables
     });
 
   } catch (err) {

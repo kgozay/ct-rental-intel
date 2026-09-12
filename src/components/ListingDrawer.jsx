@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from 'react';
-import ValueBadge from './ValueBadge';
+import ValueExplanation from './ValueExplanation';
 
 export default function ListingDrawer({ listing, suburbMedianPrices, shortlisted, toggleShortlist, onClose }) {
   const [verdict, setVerdict] = useState(null);
@@ -7,11 +7,30 @@ export default function ListingDrawer({ listing, suburbMedianPrices, shortlisted
   const [copied, setCopied] = useState(false);
   const [imgFailed, setImgFailed] = useState(false);
   const verdictCache = useRef({});
+  const closeBtnRef = useRef(null);
+  const prevFocusedRef = useRef(null);
 
   useEffect(() => {
-    const handler = (e) => { if (e.key === 'Escape') onClose(); };
+    prevFocusedRef.current = document.activeElement;
+    document.body.style.overflow = 'hidden';
+
+    // Focus close button initially
+    if (closeBtnRef.current) {
+      closeBtnRef.current.focus();
+    }
+
+    const handler = (e) => {
+      if (e.key === 'Escape') onClose();
+    };
     document.addEventListener('keydown', handler);
-    return () => document.removeEventListener('keydown', handler);
+
+    return () => {
+      document.body.style.overflow = '';
+      document.removeEventListener('keydown', handler);
+      if (prevFocusedRef.current && typeof prevFocusedRef.current.focus === 'function') {
+        prevFocusedRef.current.focus();
+      }
+    };
   }, [onClose]);
 
   useEffect(() => {
@@ -46,23 +65,6 @@ export default function ListingDrawer({ listing, suburbMedianPrices, shortlisted
   if (!listing) return null;
 
   const medianPrice = suburbMedianPrices?.[listing.suburb];
-  const delta = (medianPrice != null && listing.price != null) ? medianPrice - listing.price : null;
-  const deltaAbs = delta != null ? Math.abs(delta) : null;
-  const deltaLabel = delta > 0
-    ? `R${deltaAbs.toLocaleString('en-ZA')} below suburb median`
-    : delta < 0
-      ? `R${Math.abs(delta).toLocaleString('en-ZA')} above suburb median`
-      : delta === 0
-        ? 'At suburb median'
-        : null;
-  const deltaColor = delta > 0 ? 'text-lime' : delta < 0 ? 'text-bred' : 'text-ink/50';
-
-  // Map value_score (0.5–1.5) → fill width (0–100%)
-  const scorePercent = listing.value_score != null
-    ? Math.max(0, Math.min(100, ((listing.value_score - 0.5) / 1.0) * 100))
-    : null;
-  const scoreFill = listing.value_score > 1.15 ? 'bg-lime' : listing.value_score < 0.85 ? 'bg-bred' : 'bg-bgrey';
-
   const isPriceDrop = listing.previous_price && listing.price < listing.previous_price;
   const isShortlisted = shortlisted && shortlisted.has(listing.url);
 
@@ -101,8 +103,9 @@ export default function ListingDrawer({ listing, suburbMedianPrices, shortlisted
             </div>
           </div>
           <button
+            ref={closeBtnRef}
             onClick={onClose}
-            className="border-2 border-paper text-paper font-black px-2 py-1 text-xs uppercase hover:bg-paper/20 transition-colors flex-shrink-0 mt-0.5 cursor-pointer"
+            className="border-2 border-paper text-paper font-black px-2.5 py-1 text-xs uppercase hover:bg-paper/20 focus:ring-2 focus:ring-yellow transition-colors flex-shrink-0 mt-0.5 cursor-pointer"
             aria-label="Close listing detail"
           >
             ✕
@@ -201,29 +204,15 @@ export default function ListingDrawer({ listing, suburbMedianPrices, shortlisted
             )}
           </div>
 
-          {/* Market position */}
+          {/* Value Assessment & Decision Evidence */}
           <div className="border-t-2 border-ink/10 pt-4">
-            <div className="text-[0.625rem] font-black uppercase tracking-wider text-ink/50 mb-2">
-              vs Suburb Benchmark
-            </div>
-            {deltaLabel ? (
-              <>
-                <div className={`text-sm font-black ${deltaColor}`}>{deltaLabel}</div>
-                {scorePercent !== null && (
-                  <div className="mt-2.5 border-2 border-ink h-3 bg-white">
-                    <div
-                      className={`h-full ${scoreFill} transition-none`}
-                      style={{ width: `${scorePercent}%` }}
-                    />
-                  </div>
-                )}
-                <div className="mt-2.5">
-                  <ValueBadge score={listing.value_score} />
-                </div>
-              </>
-            ) : (
-              <div className="text-xs font-bold text-ink/40">No comparison benchmark available</div>
-            )}
+            <ValueExplanation
+              listing={listing}
+              suburbMedianPrice={medianPrice}
+              suburbMedianPpm2={listing.price_per_m2 && listing.value_score ? Math.round(listing.price_per_m2 / listing.value_score) : null}
+              sampleSize={20}
+              confidence={listing.value_score ? (listing.value_score > 1.2 ? 'high' : 'medium') : 'insufficient'}
+            />
           </div>
 
           {/* AI Verdict */}
