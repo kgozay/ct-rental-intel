@@ -1,6 +1,7 @@
 const { sql } = require('./db');
 const { SUBURBS } = require('./suburbs');
 const { resolveBaseUrl, launchSuburbRun } = require('./launcher');
+const { expireStaleScrapes } = require('./lifecycle');
 
 // Manual-only cooldown — prevents re-scraping more than once every 2 days.
 const COOLDOWN_HOURS = 48;
@@ -50,7 +51,15 @@ module.exports = async function handler(req, res) {
   }
 
   try {
-    // 0. Cooldown guard — skip the billable scrape if data is still fresh.
+    // 0a. Finalise runs that never reported back, so a dead run can't hold the
+    // "running" state (and a run where nothing landed doesn't block a retry).
+    try {
+      await expireStaleScrapes(sql);
+    } catch (err) {
+      console.warn('Could not expire stale scrapes:', err.message);
+    }
+
+    // 0b. Cooldown guard — skip the billable scrape if data is still fresh.
 
     if (!force) {
       try {
@@ -85,6 +94,7 @@ module.exports = async function handler(req, res) {
     await sql.query(`ALTER TABLE scrapes ADD COLUMN IF NOT EXISTS failed_suburbs TEXT[] DEFAULT '{}';`);
     await sql.query(`ALTER TABLE scrapes ADD COLUMN IF NOT EXISTS completed_at TIMESTAMPTZ;`);
     await sql.query(`ALTER TABLE scrapes ADD COLUMN IF NOT EXISTS error_summary TEXT;`);
+    await sql.query(`ALTER TABLE listings ADD COLUMN IF NOT EXISTS price_changed_at TIMESTAMPTZ;`);
 
     // Split suburbs into an initial batch of 4 (under Apify free tier 5-concurrency cap)
     // and queue the remaining 3 to be launched by /api/ingest as slots free up.

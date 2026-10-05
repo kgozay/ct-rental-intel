@@ -9,8 +9,8 @@ const App = lazy(() => import('./App.jsx'))
 const dashboardFallback = (
   <div className="max-w-[1100px] mx-auto px-6 py-8">
     <div className="border-[3px] border-ink bg-white p-16 text-center shadow-[6px_6px_0_#111111]">
-      <div className="text-neutral-400 font-extrabold text-lg animate-pulse">
-        ⏳ Loading dashboard…
+      <div className="text-ink/80 font-extrabold text-lg animate-pulse" role="status">
+        Loading dashboard…
       </div>
     </div>
   </div>

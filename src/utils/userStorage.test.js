@@ -7,6 +7,9 @@ import {
   saveSearchConfig,
   deleteSearchConfig,
   renameSearchConfig,
+  restoreShortlistItem,
+  restoreSearchConfig,
+  markSearchViewed,
 } from './userStorage';
 
 describe('userStorage module', () => {
@@ -103,5 +106,31 @@ describe('userStorage module', () => {
     const { updated: state3, deletedEntry } = deleteSearchConfig(state2, savedEntry.id);
     expect(state3.savedSearches).toHaveLength(0);
     expect(deletedEntry.name).toBe('City Bowl 2-Bed Luxury');
+  });
+
+  it('restores a removed shortlist item with its note intact (undo)', () => {
+    let state = loadUserData();
+    state = addShortlistItem(state, 'u1', { suburb: 'Gardens', price: 15000, main_image_url: 'img.jpg' });
+    state = updateItemNote(state, 'u1', 'viewing Sat 10am');
+    expect(state.items.u1.snapshot.main_image_url).toBe('img.jpg');
+    const entry = state.items.u1;
+    state = removeShortlistItem(state, 'u1');
+    state = restoreShortlistItem(state, 'u1', entry);
+    expect(state.items.u1.note).toBe('viewing Sat 10am');
+    // Re-adding an existing item keeps its note
+    state = addShortlistItem(state, 'u1', { suburb: 'Gardens', price: 14000 });
+    expect(state.items.u1.note).toBe('viewing Sat 10am');
+    expect(loadUserData().items.u1.note).toBe('viewing Sat 10am');
+  });
+
+  it('restores deleted searches with their id and tracks last viewed time', () => {
+    const { updated, savedEntry } = saveSearchConfig(loadUserData(), 'A', { maxPrice: 20000 });
+    expect(savedEntry.lastViewedAt).toBeTruthy();
+    const viewed = markSearchViewed(updated, savedEntry.id, '2030-01-01T00:00:00.000Z');
+    expect(viewed.savedSearches[0].lastViewedAt).toBe('2030-01-01T00:00:00.000Z');
+    const { updated: afterDelete, deletedEntry } = deleteSearchConfig(viewed, savedEntry.id);
+    const restored = restoreSearchConfig(afterDelete, deletedEntry);
+    expect(restored.savedSearches[0].id).toBe(savedEntry.id);
+    expect(restored.savedSearches[0].lastViewedAt).toBe('2030-01-01T00:00:00.000Z');
   });
 });

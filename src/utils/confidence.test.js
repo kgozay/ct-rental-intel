@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { getConfidenceLevel, getValueVerdict, CONFIDENCE_THRESHOLDS } from './confidence';
+import { getConfidenceLevel, getValueVerdict, CONFIDENCE_THRESHOLDS, VALUE_THRESHOLDS } from './confidence';
 
 describe('confidence utility', () => {
   it('correctly maps sample size to confidence level', () => {
@@ -26,5 +26,10 @@ describe('confidence utility', () => {
     expect(getValueVerdict(0.75, 'high')).toEqual({ verdict: 'premium_price', label: 'Premium price' });
     // Middle score yields Typical price
     expect(getValueVerdict(1.0, 'high')).toEqual({ verdict: 'typical_price', label: 'Typical price' });
+    // Missing scores are unrated, never "Premium price"
+    expect(getValueVerdict(null, 'high').verdict).toBe('unrated');
+    // Boundaries are inclusive
+    expect(getValueVerdict(VALUE_THRESHOLDS.GOOD, 'high').verdict).toBe('good_value');
+    expect(getValueVerdict(VALUE_THRESHOLDS.PREMIUM, 'high').verdict).toBe('premium_price');
   });
 });

@@ -1,6 +1,7 @@
 const { sql } = require('./db');
 const { SUBURBS } = require('./suburbs');
 const { getConfidenceLevel } = require('./confidence');
+const { expireStaleScrapes } = require('./lifecycle');
 const VALID_SUBURB_NAMES = new Set(SUBURBS.map(s => s.name));
 
 module.exports = async function handler(req, res) {
@@ -19,6 +20,13 @@ module.exports = async function handler(req, res) {
     let queryConditions = [];
     let queryParams = [];
     let paramIdx = 1;
+
+    // Finalise runs whose webhooks never arrived so they can't show as "refreshing" forever.
+    try {
+      await expireStaleScrapes(sql);
+    } catch (err) {
+      console.warn('Could not expire stale scrapes:', err.message);
+    }
 
     // Fetch recent scrapes to evaluate dataStatus and lifecycle
     const latestScrapes = await sql.query(
@@ -100,7 +108,9 @@ module.exports = async function handler(req, res) {
       SELECT l.id, l.scrape_id, l.listing_id, l.url, l.suburb, l.property_type, l.bedrooms, l.bathrooms,
              l.price, l.size_m2, l.price_per_m2, l.value_score, l.furnished, l.available_date,
              l.address, l.lat, l.lng, l.geocode_precise, l.main_image_url, l.agency_name,
-             l.price_changed, l.previous_price, l.scraped_at, l.created_at
+             l.price_changed, l.previous_price, l.scraped_at, l.created_at,
+             -- to_jsonb keeps this query working before the price_changed_at migration has run
+             to_jsonb(l)->>'price_changed_at' AS price_changed_at
       FROM listings l
       INNER JOIN latest_suburb_scrapes lss
          ON l.suburb = lss.suburb AND l.scrape_id = lss.max_scrape_id
@@ -196,19 +206,24 @@ module.exports = async function handler(req, res) {
     }
 
     return res.status(200).json({
-      listings: listings.map(l => ({
-        ...l,
-        bedrooms: l.bedrooms ? parseFloat(l.bedrooms) : null,
-        bathrooms: l.bathrooms ? parseFloat(l.bathrooms) : null,
-        price: parseInt(l.price, 10),
-        size_m2: l.size_m2 ? parseInt(l.size_m2, 10) : null,
-        price_per_m2: l.price_per_m2 ? parseInt(l.price_per_m2, 10) : null,
-        value_score: l.value_score ? parseFloat(l.value_score) : null,
-        lat: l.lat ? parseFloat(l.lat) : null,
-        lng: l.lng ? parseFloat(l.lng) : null,
-        previous_price: l.previous_price ? parseInt(l.previous_price, 10) : null,
-        created_at: l.created_at ? new Date(l.created_at).toISOString() : null
-      })),
+      listings: listings.map(l => {
+        // != null, not truthiness: 0 bedrooms is a studio, not "unknown".
+        const num = (v, parse = parseFloat) => (v === null || v === undefined ? null : parse(v));
+        return {
+          ...l,
+          bedrooms: num(l.bedrooms),
+          bathrooms: num(l.bathrooms),
+          price: parseInt(l.price, 10),
+          size_m2: num(l.size_m2, v => parseInt(v, 10)) || null,
+          price_per_m2: num(l.price_per_m2, v => parseInt(v, 10)) || null,
+          value_score: num(l.value_score) || null,
+          lat: num(l.lat),
+          lng: num(l.lng),
+          previous_price: num(l.previous_price, v => parseInt(v, 10)) || null,
+          created_at: l.created_at ? new Date(l.created_at).toISOString() : null,
+          price_changed_at: l.price_changed_at ? new Date(l.price_changed_at).toISOString() : null,
+        };
+      }),
       medians,
       lastScraped: lastSuccessfulScrapeAt,
       totalCount: listings.length,

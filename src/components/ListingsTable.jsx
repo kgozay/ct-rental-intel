@@ -1,104 +1,59 @@
 import { useState, useMemo } from 'react';
 import ValueBadge from './ValueBadge';
-import { SUBURBS_LIST } from '../utils/suburbs';
-import { DEFAULT_FILTERS } from '../constants/filterConstants';
-import { exportCsv } from '../utils/exportCsv';
+import Icon from './Icon';
+import InfoTip from './InfoTip';
+import NoResults from './NoResults';
+import { daysAgo } from '../utils/filters';
+import { describePriceDrop } from '../utils/priceDrop';
+import { VALUE_THRESHOLDS } from '../utils/confidence';
 
-function daysAgo(isoString) {
-  if (!isoString) return null;
-  const diff = Date.now() - new Date(isoString).getTime();
-  if (isNaN(diff)) return null;
-  return Math.max(0, Math.floor(diff / 86400000));
-}
-
-function SortHdr({ field, title, sortField, sortAsc, handleSort, children }) {
-  const isSorted = sortField === field;
+function SortHdr({ field, label, sort, onSort, children, className = '' }) {
+  const isSorted = sort.field === field;
   return (
     <th
-      onClick={() => handleSort(field)}
-      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { handleSort(field); e.preventDefault(); } }}
-      className="px-4 py-3 cursor-pointer select-none hover:bg-neutral-800 transition-colors whitespace-nowrap focus:outline-none focus-visible:bg-neutral-800 focus-visible:ring-2 focus-visible:ring-yellow"
-      aria-sort={isSorted ? (sortAsc ? 'ascending' : 'descending') : 'none'}
-      role="columnheader"
-      tabIndex={0}
-      title={title}
+      scope="col"
+      aria-sort={isSorted ? (sort.asc ? 'ascending' : 'descending') : 'none'}
+      className={`px-0 py-0 whitespace-nowrap ${className}`}
     >
-      <span className="inline-flex items-center gap-1">
+      <span className="inline-flex items-center">
+        <button
+          type="button"
+          onClick={() => onSort(field)}
+          className="px-3 py-3 inline-flex items-center gap-1 uppercase font-black tracking-wider cursor-pointer hover:bg-neutral-800 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-yellow"
+          aria-label={`Sort by ${label}`}
+        >
+          {label}
+          <Icon name={isSorted && sort.asc ? 'chevronUp' : 'chevronDown'} size={10} className={isSorted ? 'opacity-100' : 'opacity-50'} />
+        </button>
         {children}
-        <span className="text-[0.625rem] opacity-80">{isSorted ? (sortAsc ? '▲' : '▼') : '▾'}</span>
       </span>
     </th>
   );
 }
 
-export default function ListingsTable({ listings, filteredListings, filters, setFilters, shortlisted, toggleShortlist, lastVisit, onSelectListing, selectedListingUrl }) {
-  const [sortField, setSortField] = useState('price');
-  const [sortAsc, setSortAsc] = useState(true);
-
-  const handleSort = (field) => {
-    if (sortField === field) {
-      setSortAsc(!sortAsc);
-    } else {
-      setSortField(field);
-      setSortAsc(field !== 'value_score' && field !== 'days');
-    }
-  };
-
-  const sortedListings = useMemo(() => [...filteredListings].sort((a, b) => {
-    // Helper to compare values while keeping nulls at the end regardless of direction
-    const compareWithNullsLast = (vA, vB, asc) => {
-      const aNull = vA === null || vA === undefined || isNaN(vA);
-      const bNull = vB === null || vB === undefined || isNaN(vB);
-      if (aNull && bNull) return 0;
-      if (aNull) return 1;
-      if (bNull) return -1;
-      if (vA < vB) return asc ? -1 : 1;
-      if (vA > vB) return asc ? 1 : -1;
-      return 0;
-    };
-
-    switch (sortField) {
-      case 'suburb':
-        return sortAsc ? a.suburb.localeCompare(b.suburb) : b.suburb.localeCompare(a.suburb);
-      case 'property_type':
-        return sortAsc ? (a.property_type || '').localeCompare(b.property_type || '') : (b.property_type || '').localeCompare(a.property_type || '');
-      case 'bedrooms':
-        return compareWithNullsLast(a.bedrooms, b.bedrooms, sortAsc);
-      case 'price':
-        return compareWithNullsLast(a.price, b.price, sortAsc);
-      case 'size_m2':
-        return compareWithNullsLast(a.size_m2, b.size_m2, sortAsc);
-      case 'price_per_m2':
-        return compareWithNullsLast(a.price_per_m2, b.price_per_m2, sortAsc);
-      case 'value_score':
-        return compareWithNullsLast(a.value_score, b.value_score, sortAsc);
-      case 'agency_name':
-        return sortAsc ? (a.agency_name || '').localeCompare(b.agency_name || '') : (b.agency_name || '').localeCompare(a.agency_name || '');
-      case 'days': {
-        const daysA = daysAgo(a.created_at);
-        const daysB = daysAgo(b.created_at);
-        return compareWithNullsLast(daysA, daysB, sortAsc);
-      }
-      case 'available': {
-        const dateA = a.available_date || null;
-        const dateB = b.available_date || null;
-        return compareWithNullsLast(dateA, dateB, sortAsc);
-      }
-      default:
-        return compareWithNullsLast(a.price, b.price, sortAsc);
-    }
-  }), [filteredListings, sortField, sortAsc]);
-
+export default function ListingsTable({
+  listings,
+  totalListings,
+  filters,
+  onResetFilters,
+  sort,
+  onSort,
+  shortlisted,
+  toggleShortlist,
+  lastVisit,
+  onSelectListing,
+  selectedListingUrl,
+}) {
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
-  const [prevResetKey, setPrevResetKey] = useState({ filters, sortField, sortAsc });
+  const [prevResetKey, setPrevResetKey] = useState({ filters, sort });
 
-  if (prevResetKey.filters !== filters || prevResetKey.sortField !== sortField || prevResetKey.sortAsc !== sortAsc) {
-    setPrevResetKey({ filters, sortField, sortAsc });
+  if (prevResetKey.filters !== filters || prevResetKey.sort !== sort) {
+    setPrevResetKey({ filters, sort });
     setCurrentPage(1);
   }
 
-  const totalCount = sortedListings.length;
+  const totalCount = listings.length;
   const numPageSize = pageSize === 'all' ? totalCount : Number(pageSize);
   const totalPages = pageSize === 'all' ? 1 : Math.max(1, Math.ceil(totalCount / (numPageSize || 25)));
 
@@ -107,205 +62,143 @@ export default function ListingsTable({ listings, filteredListings, filters, set
   }
 
   const paginatedListings = useMemo(() => {
-    if (pageSize === 'all') return sortedListings;
+    if (pageSize === 'all') return listings;
     const start = (currentPage - 1) * numPageSize;
-    return sortedListings.slice(start, start + numPageSize);
-  }, [sortedListings, currentPage, numPageSize, pageSize]);
+    return listings.slice(start, start + numPageSize);
+  }, [listings, currentPage, numPageSize, pageSize]);
+
+  if (totalCount === 0) {
+    return <NoResults filters={filters} onReset={onResetFilters} shortlistedCount={shortlisted.size} />;
+  }
+
+  const today = new Date().toISOString().split('T')[0];
+  const td = 'px-3 py-3 border-t border-neutral-200';
+  const hdr = { sort, onSort };
 
   return (
     <div className="tableview">
-      {/* TABLE TOP BAR */}
-      <div className="flex flex-wrap items-center justify-between gap-3 mb-3 px-1">
-        <div className="text-xs font-black uppercase tracking-wider text-ink/60">
-          Showing <span className="font-mono text-ink font-black">{totalCount}</span> properties
-        </div>
-        <button
-          onClick={() => exportCsv(sortedListings)}
-          className="border-2 border-ink bg-white text-ink text-xs font-black uppercase px-3 py-1 hover:bg-yellow transition-all cursor-pointer shadow-[2px_2px_0_#111111]"
-          title="Export current filtered results as CSV"
-        >
-          ↓ Export CSV
-        </button>
-      </div>
-
-      {/* DATA TABLE */}
       <div className="overflow-x-auto border-2 border-ink shadow-[3px_3px_0_#111111]">
         <table className="w-full border-collapse bg-white text-ink text-left">
+          <caption className="sr-only">Rental listings, sorted by {sort.field.replace(/_/g, ' ')} {sort.asc ? 'ascending' : 'descending'}</caption>
           <thead>
-            <tr className="bg-ink text-paper uppercase text-xs tracking-wider border-b-2 border-ink">
-              <SortHdr field="suburb" title="Sort by suburb name" sortField={sortField} sortAsc={sortAsc} handleSort={handleSort}>Suburb</SortHdr>
-              <SortHdr field="property_type" title="Sort by property type" sortField={sortField} sortAsc={sortAsc} handleSort={handleSort}>Type</SortHdr>
-              <SortHdr field="bedrooms" title="Sort by number of bedrooms" sortField={sortField} sortAsc={sortAsc} handleSort={handleSort}>Beds</SortHdr>
-              <SortHdr field="price" title="Sort by monthly rental price" sortField={sortField} sortAsc={sortAsc} handleSort={handleSort}>Price</SortHdr>
-              <SortHdr field="size_m2" title="Sort by unit size in square meters" sortField={sortField} sortAsc={sortAsc} handleSort={handleSort}>Size</SortHdr>
-              <SortHdr field="price_per_m2" title="Sort by rental price per square meter" sortField={sortField} sortAsc={sortAsc} handleSort={handleSort}>R/m²</SortHdr>
-              <SortHdr field="value_score" title="Sort by value score (relative to suburb median R/m²)" sortField={sortField} sortAsc={sortAsc} handleSort={handleSort}>
-                Value{' '}
-                <span
-                  className="font-normal opacity-50 cursor-help text-[0.625rem] ml-0.5"
-                  title="Compares this listing's R/m² to the suburb median. Good value (lime) = 15%+ below median. Expensive (red) = 15%+ above."
-                  onClick={e => e.stopPropagation()}
-                >?</span>
+            <tr className="bg-ink text-paper text-xs border-b-2 border-ink">
+              <SortHdr field="suburb" label="Suburb" {...hdr} className="sticky left-0 z-[1] bg-ink" />
+              <SortHdr field="price" label="Price" {...hdr} />
+              <SortHdr field="value_score" label="Value" {...hdr}>
+                <InfoTip label="How the value score works">
+                  The score compares this listing&rsquo;s rent per m² with the median for its suburb
+                  (or, with no size listed, its rent with same-bedroom listings). A score of {VALUE_THRESHOLDS.GOOD.toFixed(2)}+
+                  is <b>Good value</b>; {VALUE_THRESHOLDS.PREMIUM.toFixed(2)} or less is <b>Premium</b>. With fewer than 8
+                  comparables a good score shows as <b>Potential value</b>; under 3 it is <b>Unrated</b>. Open a listing to see its evidence.
+                </InfoTip>
               </SortHdr>
-              <SortHdr field="available" title="Sort by occupation date" sortField={sortField} sortAsc={sortAsc} handleSort={handleSort}>Available</SortHdr>
-              <SortHdr field="days" title="Sort by days since listing was first seen" sortField={sortField} sortAsc={sortAsc} handleSort={handleSort}>Days</SortHdr>
-              <SortHdr field="agency_name" title="Sort by real estate agency name" sortField={sortField} sortAsc={sortAsc} handleSort={handleSort}>Agency</SortHdr>
-              <th className="px-4 py-3 select-none">Link</th>
+              <SortHdr field="bedrooms" label="Beds" {...hdr} />
+              <SortHdr field="size_m2" label="Size" {...hdr} />
+              <SortHdr field="price_per_m2" label="R/m²" {...hdr} />
+              <SortHdr field="property_type" label="Type" {...hdr} />
+              <SortHdr field="available" label="Available" {...hdr} />
+              <SortHdr field="days" label="Listed" {...hdr} />
+              <SortHdr field="agency_name" label="Agency" {...hdr} />
+              <th scope="col" className="px-3 py-3 uppercase font-black tracking-wider"><span className="sr-only">Actions</span></th>
             </tr>
           </thead>
           <tbody>
-            {sortedListings.length === 0 ? (
-              <tr>
-                <td colSpan="11" className="px-6 py-10 text-center">
-                  {listings.length === 0 ? (
-                    <span className="font-bold text-neutral-400">
-                      No data yet — click ↻ Refresh Listings to run the first scrape.
-                    </span>
-                  ) : (
-                    <div className="flex flex-col items-center gap-3">
-                      <div className="font-black text-sm text-ink">No listings match the active filters.</div>
-                      <div className="text-xs text-neutral-500 font-medium max-w-sm text-left space-y-0.5">
-                        {filters.search && <div>· Search keyword: &ldquo;{filters.search}&rdquo;</div>}
-                        {filters.suburbs.length < SUBURBS_LIST.length && (
-                          <div>· Suburbs limited to {filters.suburbs.length} of {SUBURBS_LIST.length}</div>
-                        )}
-                        {filters.maxPrice < 80000 && (
-                          <div>· Max price set to R{filters.maxPrice.toLocaleString('en-ZA')}</div>
-                        )}
-                        {filters.minBeds !== null && <div>· Minimum {filters.minBeds}+ bedrooms</div>}
-                        {filters.furnished === true && <div>· Furnished only</div>}
-                        {filters.goodValueOnly && <div>· Good value only is on</div>}
-                        {filters.priceDropOnly && <div>· Price drops only is on</div>}
-                        {filters.shortlistOnly && shortlisted.size === 0 && <div>· Shortlist is empty — add listings with ♡</div>}
-                        {filters.availableBefore && <div>· Available before {filters.availableBefore}</div>}
-                      </div>
-                      <button
-                        onClick={() => setFilters(DEFAULT_FILTERS)}
-                        className="border-[3px] border-ink bg-yellow text-ink text-xs font-black uppercase px-5 py-2 cursor-pointer shadow-[3px_3px_0_#111111] hover:translate-x-[-1px] hover:translate-y-[-1px] hover:shadow-[4px_4px_0_#111111] active:translate-x-[2px] active:translate-y-[2px] active:shadow-none transition-all"
-                      >
-                        Reset all filters
-                      </button>
-                    </div>
-                  )}
-                </td>
-              </tr>
-            ) : (
-              paginatedListings.map((item, idx) => {
-                const isPriceDrop = item.previous_price && item.price < item.previous_price;
-                const days = daysAgo(item.created_at);
-                const isNew = lastVisit && item.created_at && item.created_at > lastVisit;
-                const animDelay = Math.min(idx, 15) * 30;
+            {paginatedListings.map((item, idx) => {
+              const drop = describePriceDrop(item);
+              const days = daysAgo(item.created_at);
+              const isNew = lastVisit && item.created_at && item.created_at > lastVisit;
+              const isSelected = item.url === selectedListingUrl;
+              const isShortlisted = shortlisted.has(item.url);
+              const rowBg = isSelected ? 'bg-yellow' : 'bg-white group-hover:bg-neutral-50';
 
-                return (
-                  <tr
-                    key={item.id || item.url}
-                    className={`stagger-row ${onSelectListing ? 'cursor-pointer' : ''} ${item.url === selectedListingUrl ? 'bg-yellow border-l-[4px] border-l-blue' : isPriceDrop ? 'hover:bg-neutral-50 border-l-[4px] border-l-lime' : 'hover:bg-neutral-50'}`}
-                    style={{ animationDelay: `${animDelay}ms` }}
-                    onClick={() => onSelectListing?.(item)}
-                  >
-                    <td className="px-4 py-3.5 border-t border-neutral-200">
+              return (
+                <tr
+                  key={item.id || item.url}
+                  className={`stagger-row cursor-pointer group ${isSelected ? 'bg-yellow' : 'hover:bg-neutral-50'}`}
+                  style={{ animationDelay: `${Math.min(idx, 15) * 30}ms` }}
+                  onClick={() => onSelectListing?.(item)}
+                >
+                  <td className={`${td} sticky left-0 z-[1] ${rowBg} ${drop ? 'border-l-[4px] border-l-blue' : ''}`}>
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); onSelectListing?.(item); }}
+                      className="text-left font-bold text-xs uppercase hover:underline focus-visible:outline-2 focus-visible:outline-ink inline-flex items-center gap-1.5 flex-wrap cursor-pointer max-w-[9rem]"
+                      aria-label={`View details: ${item.bedrooms === 0 ? 'studio' : item.bedrooms != null ? `${item.bedrooms} bed` : ''} ${item.property_type || ''} in ${item.suburb} for R${item.price.toLocaleString('en-ZA')}`}
+                    >
+                      <span className="font-bold text-ink">{item.suburb}</span>
+                      {isNew && (
+                        <span className="inline-block bg-yellow border border-ink text-ink text-[0.625rem] font-black uppercase px-1.5 py-0.5 leading-none">New</span>
+                      )}
+                    </button>
+                  </td>
+                  <td className={`${td} font-black font-mono tabular-nums whitespace-nowrap`}>
+                    R{item.price.toLocaleString('en-ZA')}
+                    {drop && (
+                      <span className="block text-[0.6875rem] text-blue font-extrabold mt-0.5" title={drop.long}>
+                        {drop.short}
+                      </span>
+                    )}
+                  </td>
+                  <td className={td}><ValueBadge valuation={item.valuation} /></td>
+                  <td className={`${td} font-bold text-center font-mono tabular-nums`}>
+                    {item.bedrooms === 0 ? <span className="text-xs">Studio</span> : item.bedrooms ?? '—'}
+                  </td>
+                  <td className={`${td} text-xs font-bold font-mono tabular-nums text-ink/80`}>{item.size_m2 ? `${item.size_m2}m²` : '—'}</td>
+                  <td className={`${td} font-bold font-mono tabular-nums`}>{item.price_per_m2 ? `R${item.price_per_m2}` : '—'}</td>
+                  <td className={`${td} text-xs uppercase font-extrabold text-ink/75`}>{item.property_type}</td>
+                  <td className={`${td} text-xs font-bold text-ink/80 whitespace-nowrap`}>
+                    {item.available_date
+                      ? item.available_date <= today
+                        ? <span className="inline-flex items-center gap-1.5 text-emerald-800 font-black"><span className="w-1.5 h-1.5 rounded-full bg-emerald-600" />Now</span>
+                        : <span className="font-mono">{item.available_date}</span>
+                      : '—'}
+                  </td>
+                  <td className={`${td} text-xs font-bold font-mono tabular-nums text-ink/75`}>{days !== null ? `${days}d` : '—'}</td>
+                  <td className={`${td} text-xs truncate max-w-[10rem] font-semibold`}>{item.agency_name || '—'}</td>
+                  <td className={td} onClick={(e) => e.stopPropagation()}>
+                    <div className="flex items-center gap-1.5">
                       <button
                         type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onSelectListing?.(item);
-                        }}
-                        className="text-left font-bold text-xs uppercase hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-ink focus-visible:ring-offset-1 inline-flex items-center gap-1.5 flex-wrap cursor-pointer"
-                        aria-label={`View details: ${item.bedrooms !== null ? `${item.bedrooms} bed ` : ''}${item.property_type || ''} in ${item.suburb} for R${item.price.toLocaleString('en-ZA')}`}
+                        onClick={() => toggleShortlist(item.url, item)}
+                        aria-pressed={isShortlisted}
+                        className={`w-9 h-9 inline-flex items-center justify-center cursor-pointer border-2 transition-colors focus-visible:outline-2 focus-visible:outline-ink ${isShortlisted ? 'border-ink bg-bred text-white' : 'border-transparent text-ink hover:border-ink'}`}
+                        aria-label={isShortlisted ? `Remove ${item.suburb} listing from shortlist` : `Add ${item.suburb} listing to shortlist`}
                       >
-                        <span className="font-bold text-ink">{item.suburb}</span>
-                        {isNew && (
-                          <span className="inline-block bg-yellow border border-ink text-ink text-[0.5625rem] font-black uppercase px-1.5 py-0.5 leading-none">
-                            NEW
-                          </span>
-                        )}
+                        <Icon name="heart" filled={isShortlisted} size={16} />
                       </button>
-                    </td>
-                    <td className="px-4 py-3.5 border-t border-neutral-200 text-xs uppercase font-extrabold text-neutral-500">
-                      {item.property_type}
-                    </td>
-                    <td className="px-4 py-3.5 border-t border-neutral-200 font-bold text-center font-mono tabular-nums">
-                      {item.bedrooms !== null ? `${item.bedrooms}` : '—'}
-                    </td>
-                    <td className="px-4 py-3.5 border-t border-neutral-200 font-black font-mono tabular-nums">
-                      R{item.price.toLocaleString('en-ZA')}
-                      {isPriceDrop && (
-                        <span className="block text-[0.6875rem] text-blue font-extrabold mt-0.5">
-                          ↓ was R{item.previous_price.toLocaleString('en-ZA')}
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3.5 border-t border-neutral-200 text-xs font-bold font-mono tabular-nums text-neutral-600">
-                      {item.size_m2 ? `${item.size_m2}m²` : '—'}
-                    </td>
-                    <td className="px-4 py-3.5 border-t border-neutral-200 font-bold font-mono tabular-nums">
-                      {item.price_per_m2 ? `R${item.price_per_m2}` : '—'}
-                    </td>
-                    <td className="px-4 py-3.5 border-t border-neutral-200">
-                      <ValueBadge score={item.value_score} />
-                    </td>
-                    <td className="px-4 py-3.5 border-t border-neutral-200 text-xs font-bold text-neutral-600">
-                      {item.available_date
-                        ? item.available_date <= new Date().toISOString().split('T')[0]
-                          ? <span className="inline-flex items-center gap-1.5 text-emerald-600 font-black"><span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>Immediate</span>
-                          : <span className="font-mono text-neutral-600">{item.available_date}</span>
-                        : '—'}
-                    </td>
-                    <td className="px-4 py-3.5 border-t border-neutral-200 text-xs font-bold font-mono tabular-nums text-neutral-500">
-                      {days !== null ? `${days}d` : '—'}
-                    </td>
-                    <td className="px-4 py-3.5 border-t border-neutral-200 text-xs truncate max-w-xs font-semibold">
-                      {item.agency_name || '—'}
-                    </td>
-                    <td className="px-4 py-3.5 border-t border-neutral-200" onClick={(e) => e.stopPropagation()}>
-                      <div className="flex items-center gap-1.5">
-                        <button
-                          type="button"
-                          onClick={() => toggleShortlist(item.url, item)}
-                          className="text-base leading-none cursor-pointer hover:scale-110 transition-transform select-none p-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-ink"
-                          title={shortlisted.has(item.url) ? 'Remove from shortlist' : 'Add to shortlist'}
-                          aria-label={shortlisted.has(item.url) ? `Remove ${item.suburb} property from shortlist` : `Add ${item.suburb} property to shortlist`}
-                        >
-                          {shortlisted.has(item.url) ? '♥' : '♡'}
-                        </button>
-                        <a
-                          href={item.url}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="inline-block border-2 border-ink bg-yellow font-black px-2.5 py-1 text-xs text-ink transition-transform duration-75 hover:translate-x-[-1px] hover:translate-y-[-1px] hover:shadow-[2px_2px_0_#111111] active:translate-x-[1px] active:translate-y-[1px] active:shadow-none focus:outline-none focus-visible:ring-2 focus-visible:ring-ink"
-                          title="Open listing on Property24"
-                          aria-label={`Open listing on Property24: ${item.suburb} - R${item.price.toLocaleString('en-ZA')}`}
-                        >
-                          ↗
-                        </a>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })
-            )}
+                      <a
+                        href={item.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="w-9 h-9 inline-flex items-center justify-center border-2 border-ink bg-yellow text-ink transition-transform duration-75 hover:translate-x-[-1px] hover:translate-y-[-1px] hover:shadow-[2px_2px_0_#111111] focus-visible:outline-2 focus-visible:outline-ink"
+                        aria-label={`Open ${item.suburb} listing on Property24`}
+                      >
+                        <Icon name="external" />
+                      </a>
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
 
-      {/* FOOTER ROW & PAGINATION CONTROLS */}
-      <div className="mt-4 flex flex-wrap items-center justify-between gap-4">
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-3">
-          <div className="font-extrabold text-xs text-ink select-none">
-            Showing <span className="inline-block bg-blue text-white px-2 py-0.5 text-xs font-black shadow-[2px_2px_0_#111111] mr-1">
-              {totalCount === 0 ? 0 : `${(currentPage - 1) * numPageSize + 1}–${Math.min(currentPage * numPageSize, totalCount)}`}
-            </span> of {totalCount} matching ({listings.length} total)
+          <div className="font-extrabold text-xs text-ink">
+            <span className="font-mono">{(currentPage - 1) * numPageSize + 1}–{Math.min(currentPage * numPageSize, totalCount)}</span>
+            {' '}of {totalCount} matching ({totalListings} total)
           </div>
-
-          <label className="flex items-center gap-1.5 text-xs font-black text-ink select-none">
-            <span>Per page:</span>
+          <label className="flex items-center gap-1.5 text-xs font-black text-ink">
+            <span>Per page</span>
             <select
               value={pageSize}
               onChange={(e) => {
                 setPageSize(e.target.value === 'all' ? 'all' : Number(e.target.value));
                 setCurrentPage(1);
               }}
-              className="border-2 border-ink bg-white text-ink px-2 py-1 font-bold text-xs cursor-pointer focus:outline-none focus:ring-1 focus:ring-blue"
+              className="min-h-[36px] border-2 border-ink bg-white text-ink px-2 py-1 font-bold text-xs cursor-pointer focus-visible:outline-2 focus-visible:outline-blue"
             >
               <option value={25}>25</option>
               <option value={50}>50</option>
@@ -316,39 +209,33 @@ export default function ListingsTable({ listings, filteredListings, filters, set
         </div>
 
         {totalPages > 1 && (
-          <div className="flex items-center gap-1.5 select-none">
+          <nav aria-label="Table pages" className="flex items-center gap-1.5">
             <button
+              type="button"
               onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
               disabled={currentPage === 1}
-              className="border-2 border-ink bg-white text-ink font-black text-xs px-2.5 py-1 cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed hover:bg-neutral-100 shadow-[1px_1px_0_#111111]"
+              className="min-h-[36px] border-2 border-ink bg-white text-ink font-black text-xs px-2.5 py-1 cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed hover:bg-neutral-100 inline-flex items-center gap-1"
             >
-              ◀ Prev
+              <Icon name="chevronLeft" size={12} /> Prev
             </button>
-            <span className="text-xs font-extrabold px-2 text-ink">
-              Page {currentPage} of {totalPages}
-            </span>
+            <span className="text-xs font-extrabold px-2 text-ink" aria-current="page">Page {currentPage} of {totalPages}</span>
             <button
+              type="button"
               onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
               disabled={currentPage === totalPages}
-              className="border-2 border-ink bg-white text-ink font-black text-xs px-2.5 py-1 cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed hover:bg-neutral-100 shadow-[1px_1px_0_#111111]"
+              className="min-h-[36px] border-2 border-ink bg-white text-ink font-black text-xs px-2.5 py-1 cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed hover:bg-neutral-100 inline-flex items-center gap-1"
             >
-              Next ▶
+              Next <Icon name="chevronRight" size={12} />
             </button>
-          </div>
+          </nav>
         )}
+      </div>
 
-        <button
-          onClick={() => exportCsv(sortedListings)}
-          className="border-2 border-ink bg-paper font-extrabold text-xs uppercase px-4 py-2 cursor-pointer hover:bg-neutral-100 transition-colors shadow-[2px_2px_0_#111111] hover:shadow-[3px_3px_0_#111111] active:shadow-none active:translate-x-[1px] active:translate-y-[1px]"
-        >
-          ↓ Export CSV ({sortedListings.length})
-        </button>
-      </div>
-      <div className="mt-2 text-[0.625rem] text-neutral-400 font-bold select-none space-y-0.5">
-        <div>* "Days" = how many days since the listing was first detected by the scraper.</div>
-        <div>* <span className="inline-block bg-yellow border border-ink text-ink text-[0.5625rem] font-black uppercase px-1 py-0 leading-none mr-0.5">NEW</span> = listing appeared since your last visit.</div>
-        <div>* Value score compares this listing's R/m² to the suburb median. Hover the <span className="font-black text-ink">?</span> in the Value column for details.</div>
-      </div>
+      <ul className="mt-3 text-[11px] text-ink/75 font-semibold space-y-0.5 list-none p-0 m-0">
+        <li><b>Listed</b> = days since the listing was first seen by the scraper.</li>
+        <li><span className="inline-block bg-yellow border border-ink text-ink text-[0.625rem] font-black uppercase px-1 leading-none mr-1">New</span>= appeared since your last visit.</li>
+        <li><span className="inline-block w-2 h-2.5 bg-blue align-middle mr-1" />Blue edge = price dropped.</li>
+      </ul>
     </div>
   );
 }

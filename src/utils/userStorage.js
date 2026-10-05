@@ -128,14 +128,17 @@ export function extractSnapshot(listing) {
     agency_name: listing.agency_name || '',
     value_score: listing.value_score !== undefined ? listing.value_score : null,
     available_date: listing.available_date || null,
-    image_url: listing.image_url || null,
+    furnished: listing.furnished !== undefined ? listing.furnished : null,
+    address: listing.address || '',
+    listing_id: listing.listing_id || null,
+    main_image_url: listing.main_image_url || listing.image_url || null,
   };
 }
 
 /**
  * Add or update shortlist item
  */
-export function addShortlistItem(currentData, url, listing = null, note = '') {
+export function addShortlistItem(currentData, url, listing = null, note = undefined) {
   if (!url) return currentData;
   const nextItems = {
     ...(currentData?.items || {}),
@@ -146,6 +149,16 @@ export function addShortlistItem(currentData, url, listing = null, note = '') {
     }
   };
   const updated = { ...currentData, items: nextItems };
+  saveUserData(updated);
+  return updated;
+}
+
+/**
+ * Put back a previously removed shortlist entry exactly as it was (undo).
+ */
+export function restoreShortlistItem(currentData, url, entry) {
+  if (!url || !entry) return currentData;
+  const updated = { ...currentData, items: { ...(currentData?.items || {}), [url]: entry } };
   saveUserData(updated);
   return updated;
 }
@@ -188,6 +201,7 @@ export function saveSearchConfig(currentData, name, filters) {
     id,
     name: name?.trim() || `Saved Search (${new Date().toLocaleDateString('en-ZA')})`,
     createdAt: new Date().toISOString(),
+    lastViewedAt: new Date().toISOString(),
     filters: { ...filters },
   };
 
@@ -224,6 +238,31 @@ export function renameSearchConfig(currentData, id, newName) {
       s.id === id ? { ...s, name: newName.trim() } : s
     ),
   };
+  saveUserData(updated);
+  return updated;
+}
+
+/**
+ * Record when a saved search was last opened, so "new since" counts reset.
+ */
+export function markSearchViewed(currentData, id, at = new Date().toISOString()) {
+  const updated = {
+    ...currentData,
+    savedSearches: (currentData?.savedSearches || []).map(s =>
+      s.id === id ? { ...s, lastViewedAt: at } : s
+    ),
+  };
+  saveUserData(updated);
+  return updated;
+}
+
+/**
+ * Put back a deleted saved search with its original id and history (undo).
+ */
+export function restoreSearchConfig(currentData, entry) {
+  if (!entry) return currentData;
+  const existing = (currentData?.savedSearches || []).filter(s => s.id !== entry.id);
+  const updated = { ...currentData, savedSearches: [entry, ...existing] };
   saveUserData(updated);
   return updated;
 }

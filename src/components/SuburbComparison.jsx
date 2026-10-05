@@ -1,13 +1,15 @@
 import { useMemo } from 'react';
 import { SUBURBS_LIST } from '../utils/suburbs';
 import { getSampleConfidence } from '../utils/confidence';
+import { isValueOpportunity } from '../utils/valuation';
+import Icon from './Icon';
 
 export default function SuburbComparison({ listings, history, onDrillDown }) {
   const cards = useMemo(() => {
     const built = SUBURBS_LIST.map(suburb => {
       const suburbListings = listings.filter(l => l.suburb === suburb);
       const count = suburbListings.length;
-      const goodValue = suburbListings.filter(l => l.value_score > 1.15).length;
+      const goodValue = suburbListings.filter(l => isValueOpportunity(l.valuation)).length;
       const confidence = getSampleConfidence(count);
 
       // Median rent (overall median price)
@@ -56,7 +58,7 @@ export default function SuburbComparison({ listings, history, onDrillDown }) {
         <h3 className="text-sm font-black uppercase text-ink mb-1.5">
           No Suburb Comparison Data Available
         </h3>
-        <p className="text-xs text-neutral-500 font-medium max-w-sm mx-auto mb-0 leading-relaxed">
+        <p className="text-xs text-ink/80 font-medium max-w-sm mx-auto mb-0 leading-relaxed">
           Broaden your filters or reset to see side-by-side medians and rates across all 7 monitored suburbs.
         </p>
       </div>
@@ -69,7 +71,7 @@ export default function SuburbComparison({ listings, history, onDrillDown }) {
         <h2 className="inline-block bg-ink text-paper text-xs font-black uppercase tracking-wider px-2.5 py-1 mb-1">
           Suburb Comparison Matrix
         </h2>
-        <p className="text-xs text-neutral-500 font-bold mt-2 mb-0">
+        <p className="text-xs text-ink/80 font-bold mt-2 mb-0">
           Side-by-side snapshot based on active filters. Sorted from most affordable median rent.
         </p>
       </div>
@@ -88,49 +90,49 @@ export default function SuburbComparison({ listings, history, onDrillDown }) {
                 </div>
                 <div className="text-[0.6875rem] font-bold text-paper/80 mt-0.5 flex items-center gap-1.5">
                   <span>{count} listing{count !== 1 ? 's' : ''}</span>
-                  <span className="text-paper/40">·</span>
-                  <span className="capitalize text-paper/70 font-mono text-[10px]">{confidence}</span>
+                  <span className="text-paper/70">·</span>
+                  <span className="capitalize text-paper/90 font-mono text-[11px]">{confidence}</span>
                 </div>
               </div>
             </div>
 
             {/* Small sample warning */}
             {count > 0 && count < 3 && (
-              <div className="border border-amber-600 bg-amber-50 text-amber-900 text-[10px] font-bold p-1.5 leading-tight">
-                ⚠ Low sample size (n={count}). Medians are volatile and illustrative.
+              <div className="border border-amber-600 bg-amber-50 text-amber-900 text-[11px] font-bold p-1.5 leading-tight">
+                <Icon name="warning" size={11} className="mr-1 -mt-0.5" />Low sample size (n={count}). Medians are volatile and illustrative.
               </div>
             )}
 
             {/* Stats */}
             <div className="flex flex-col gap-2 text-xs mt-1">
               <div className="flex justify-between items-center">
-                <span className="font-bold uppercase text-neutral-500 text-[0.6875rem]">Median Rent</span>
+                <span className="font-bold uppercase text-ink/80 text-[0.6875rem]">Median Rent</span>
                 <span className="font-black text-ink">
                   {medianRent ? `R ${medianRent.toLocaleString('en-ZA')}` : '—'}
                 </span>
               </div>
 
               <div className="flex justify-between items-center">
-                <span className="font-bold uppercase text-neutral-500 text-[0.6875rem]">Median R/m²</span>
+                <span className="font-bold uppercase text-ink/80 text-[0.6875rem]">Median R/m²</span>
                 <span className="font-black text-ink">
                   {medianPrice ? `R ${medianPrice.toLocaleString('en-ZA')}` : '—'}
                 </span>
               </div>
 
               <div className="flex justify-between items-center">
-                <span className="font-bold uppercase text-neutral-500 text-[0.6875rem]">Good Value</span>
+                <span className="font-bold uppercase text-ink/80 text-[0.6875rem]">Good Value</span>
                 {goodValue > 0 ? (
                   <span className="inline-block bg-lime border border-ink text-ink text-[0.6rem] font-black uppercase px-1.5 py-0.5 leading-none">
                     {goodValue} listing{goodValue !== 1 ? 's' : ''}
                   </span>
                 ) : (
-                  <span className="font-black text-neutral-400">—</span>
+                  <span className="font-black text-ink/75">—</span>
                 )}
               </div>
 
               <div className="flex justify-between items-center">
-                <span className="font-bold uppercase text-neutral-500 text-[0.6875rem]">Trend</span>
-                <span className={`font-black ${trend === 'up' ? 'text-bred' : trend === 'down' ? 'text-blue' : 'text-neutral-400'}`}>
+                <span className="font-bold uppercase text-ink/80 text-[0.6875rem]">Trend</span>
+                <span className={`font-black ${trend === 'up' ? 'text-bred' : trend === 'down' ? 'text-blue' : 'text-ink/75'}`}>
                   {trend === 'up' && trendDiff !== null
                     ? `↑ R${Math.abs(trendDiff).toLocaleString('en-ZA')}`
                     : trend === 'down' && trendDiff !== null
@@ -150,7 +152,7 @@ export default function SuburbComparison({ listings, history, onDrillDown }) {
                     title={`${Math.round((goodValue / count) * 100)}% good value`}
                   />
                 </div>
-                <div className="text-[0.625rem] font-bold text-neutral-400 mt-1">
+                <div className="text-[0.625rem] font-bold text-ink/75 mt-1">
                   {Math.round((goodValue / count) * 100)}% good value ratio
                 </div>
               </div>
@@ -168,7 +170,7 @@ export default function SuburbComparison({ listings, history, onDrillDown }) {
 
             {/* Empty state for filtered-out suburbs */}
             {count === 0 && (
-              <div className="text-[0.625rem] font-bold text-neutral-400 mt-auto pt-2 border-t-2 border-ink/10">
+              <div className="text-[0.625rem] font-bold text-ink/75 mt-auto pt-2 border-t-2 border-ink/10">
                 No listings match active filters
               </div>
             )}

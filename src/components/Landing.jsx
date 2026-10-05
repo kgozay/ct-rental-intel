@@ -3,6 +3,10 @@ import { Link } from 'react-router-dom';
 import { SUBURBS_LIST } from '../utils/suburbs';
 import { useRentalData } from '../hooks/useRentalData';
 import { formatRelativeTime } from '../utils/dataStatus';
+import { getInitialTheme, applyTheme } from '../utils/theme';
+import { buildComparables, getListingValuation, isValueOpportunity } from '../utils/valuation';
+import { VALUE_THRESHOLDS } from '../utils/confidence';
+import Icon from './Icon';
 
 // Suburb metadata & fallback baselines (used while live data is loading or offline)
 const SUBURB_METADATA = {
@@ -17,9 +21,7 @@ const SUBURB_METADATA = {
 
 export default function Landing() {
   const { listings: liveListings, dataStatus } = useRentalData();
-  const [theme, setTheme] = useState(() => {
-    return localStorage.getItem('theme') || 'light';
-  });
+  const [theme, setTheme] = useState(getInitialTheme);
 
   // Deal Barometer State
   const [selectedSuburb, setSelectedSuburb] = useState('Sea Point');
@@ -30,8 +32,7 @@ export default function Landing() {
   const [activeShowcaseTab, setActiveShowcaseTab] = useState('table');
 
   useEffect(() => {
-    document.documentElement.classList.toggle('dark', theme === 'dark');
-    localStorage.setItem('theme', theme);
+    applyTheme(theme, false);
   }, [theme]);
 
   useEffect(() => {
@@ -49,7 +50,8 @@ export default function Landing() {
       const mid = Math.floor(rates.length / 2);
       medianRate = rates.length % 2 ? rates[mid] : Math.round((rates[mid - 1] + rates[mid]) / 2);
     }
-    const goodValue = liveListings.filter(l => l.value_score > 1.15).length;
+    const comps = buildComparables(liveListings);
+    const goodValue = liveListings.filter(l => isValueOpportunity(getListingValuation(l, comps))).length;
     return { total: liveListings.length, suburbs, medianRate, goodValue };
   }, [liveListings, hasLiveData]);
 
@@ -132,11 +134,16 @@ export default function Landing() {
         </div>
         <div className="flex items-center gap-3">
           <button
-            onClick={() => setTheme(prev => prev === 'dark' ? 'light' : 'dark')}
+            type="button"
+            onClick={() => {
+              const next = theme === 'dark' ? 'light' : 'dark';
+              applyTheme(next, true);
+              setTheme(next);
+            }}
             className="border-[3px] border-ink bg-paper text-ink font-black px-3.5 py-2 cursor-pointer transition-all select-none text-xs leading-none flex items-center justify-center shadow-[3px_3px_0_#111111] hover:translate-x-[-1px] hover:translate-y-[-1px] hover:shadow-[4px_4px_0_#111111] active:translate-x-[1px] active:translate-y-[1px] active:shadow-none uppercase tracking-wider"
-            aria-label="Toggle theme mode"
+            aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
           >
-            {theme === 'dark' ? '☀ Light' : '☾ Dark'}
+            <Icon name={theme === 'dark' ? 'sun' : 'moon'} size={16} />
           </button>
           <Link
             to="/dashboard"
@@ -325,7 +332,10 @@ export default function Landing() {
                       : 'bg-yellow text-ink'
                   }`}
                 >
-                  {isGoodValue ? '🎯 Under Market' : isFairValue ? '⚖ Fair Market' : '★ Upper Market'}
+                  <span className="inline-flex items-center gap-1.5">
+                    <Icon name={isGoodValue ? 'target' : isFairValue ? 'scale' : 'star'} size={12} />
+                    {isGoodValue ? 'Under Market' : isFairValue ? 'Fair Market' : 'Upper Market'}
+                  </span>
                 </span>
               </div>
 
@@ -414,16 +424,16 @@ export default function Landing() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="border-2 border-paper/30 bg-white/10 p-4">
             <span className="inline-block bg-lime text-ink text-xs font-black uppercase px-2 py-0.5 mb-2">
-              Score &gt; 1.15
+              Score ≥ {VALUE_THRESHOLDS.GOOD.toFixed(2)}
             </span>
             <h4 className="font-black text-sm uppercase text-paper mb-1">Underpriced Gem</h4>
             <p className="text-xs font-medium text-paper/70 leading-relaxed">
-              You get &gt;15% more floor space or pay significantly less per m² than neighbours. Snatched up fast.
+              You pay at least ~17% less per m² than the suburb median. With fewer than 8 comparables we call it “Potential value”.
             </p>
           </div>
           <div className="border-2 border-paper/30 bg-white/10 p-4">
             <span className="inline-block bg-bgrey text-ink text-xs font-black uppercase px-2 py-0.5 mb-2">
-              Score 0.85 – 1.15
+              Score {VALUE_THRESHOLDS.PREMIUM.toFixed(2)} – {VALUE_THRESHOLDS.GOOD.toFixed(2)}
             </span>
             <h4 className="font-black text-sm uppercase text-paper mb-1">Fair Market Value</h4>
             <p className="text-xs font-medium text-paper/70 leading-relaxed">
@@ -432,7 +442,7 @@ export default function Landing() {
           </div>
           <div className="border-2 border-paper/30 bg-white/10 p-4">
             <span className="inline-block bg-bred text-white text-xs font-black uppercase px-2 py-0.5 mb-2">
-              Score &lt; 0.85
+              Score ≤ {VALUE_THRESHOLDS.PREMIUM.toFixed(2)}
             </span>
             <h4 className="font-black text-sm uppercase text-paper mb-1">Overpriced / Premium</h4>
             <p className="text-xs font-medium text-paper/70 leading-relaxed">
@@ -477,7 +487,7 @@ export default function Landing() {
                   <tr key={suburb} className="hover:bg-neutral-50 transition-colors">
                     <td className="p-3.5 font-black text-ink uppercase text-sm">
                       <div className="flex items-center gap-2">
-                        <span className="text-[10px] font-mono text-neutral-400">#{idx + 1}</span>
+                        <span className="text-[11px] font-mono text-ink/75">#{idx + 1}</span>
                         <span>{suburb}</span>
                       </div>
                     </td>
@@ -543,12 +553,12 @@ export default function Landing() {
               <tr className="bg-white">
                 <td className="p-3.5 font-black">Sorting &amp; Ranking</td>
                 <td className="p-3.5 text-ink/60">Paid agent promotions &amp; featured boosts</td>
-                <td className="p-3.5 font-bold text-ink bg-lime/20">100% Unbiased: sort by R/m² or Value Score</td>
+                <td className="p-3.5 font-bold text-ink bg-lime/20">Sort by R/m² or value score, not ad placement</td>
               </tr>
               <tr className="bg-paper">
                 <td className="p-3.5 font-black">Price per m² (R/m²)</td>
                 <td className="p-3.5 text-ink/60">Not calculated or hidden in description text</td>
-                <td className="p-3.5 font-bold text-ink bg-lime/20">Calculated &amp; normalised for every single unit</td>
+                <td className="p-3.5 font-bold text-ink bg-lime/20">Calculated for every listing with a floor area</td>
               </tr>
               <tr className="bg-white">
                 <td className="p-3.5 font-black">Fair-Value Flagging</td>

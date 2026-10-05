@@ -24,17 +24,30 @@ export function getConfidenceLevel(sampleSize) {
 
 export const getSampleConfidence = getConfidenceLevel;
 
+/**
+ * Single source of truth for value-score cut-offs. Every view (badges, KPIs,
+ * filters, map, CSV) must go through getValueVerdict rather than comparing
+ * value_score to literals.
+ */
+export const VALUE_THRESHOLDS = {
+  GOOD: 1.2,
+  PREMIUM: 0.8,
+};
+
 export function getValueVerdict(valueScore, confidenceLevel) {
   if (confidenceLevel === 'insufficient') {
     return { verdict: 'unrated', label: 'Insufficient data' };
   }
-  const score = typeof valueScore === 'number' ? valueScore : 0;
-  if (score >= 1.2) {
+  if (typeof valueScore !== 'number' || isNaN(valueScore)) {
+    return { verdict: 'unrated', label: 'Not rated' };
+  }
+  const score = valueScore;
+  if (score >= VALUE_THRESHOLDS.GOOD) {
     return confidenceLevel === 'low'
       ? { verdict: 'potential_value', label: 'Potential value' }
       : { verdict: 'good_value', label: 'Good value' };
   }
-  if (score <= 0.8) {
+  if (score <= VALUE_THRESHOLDS.PREMIUM) {
     return { verdict: 'premium_price', label: 'Premium price' };
   }
   return { verdict: 'typical_price', label: 'Typical price' };

@@ -42,7 +42,8 @@ Unlike commercial real estate portals optimized for listing agents, CT Rental In
   - `api/listings.js`: Serves active filtered listings with `dataStatus` and suburb `comparables`.
   - `api/history.js`: Serves historical median trends by suburb and bedroom count.
   - `api/analyse.js`: Executive market intelligence via Gemini 2.5 Flash with deterministic fallback.
-  - `api/migrate.js`: Idempotent database schema migrations for Postgres.
+  - `api/migrate.js`: Idempotent database schema migrations for Postgres (run as a Node script).
+  - `api/lifecycle.js`: Finalises scrapes whose Apify webhooks never arrived (2-hour timeout).
 - **Database**:
   - PostgreSQL (Neon serverless or Supabase) with connection pooling.
 
@@ -53,20 +54,24 @@ Unlike commercial real estate portals optimized for listing agents, CT Rental In
 Create a `.env` or `.env.local` file with the following variables:
 
 ```env
-# PostgreSQL Connection String
-DATABASE_URL=postgres://user:password@host/database?sslmode=require
+# Neon Postgres connection string (required by api/db.js)
+NEON_DATABASE_URL=postgres://user:password@host/database?sslmode=require
 
-# Apify Actor Crawler Configuration
+# Apify token — runs the fatihtahta~property24-scraper-za actor (see api/launcher.js)
 APIFY_API_TOKEN=your_apify_api_token
-APIFY_ACTOR_ID=your_apify_actor_id
+# Optional: set to "false" to skip the per-listing enrichment pass (roughly halves Apify cost)
+APIFY_ENRICH=true
 
-# Google Gemini API Key (for AI Market Reports)
+# Shared secret on the Apify webhook URL (api/ingest.js) and for forced scrapes (api/scrape.js?force=true)
+INGEST_SECRET=your_secure_random_secret
+
+# Public base URL Apify calls back to. Falls back to VERCEL_URL on Vercel.
+PUBLIC_BASE_URL=https://your-deployment.vercel.app
+
+# Google Gemini API key (AI market reports and listing reads; deterministic fallback without it)
 GEMINI_API_KEY=your_gemini_api_key
 
-# Webhook Ingestion Secret
-WEBHOOK_SECRET=your_secure_webhook_secret
-
-# Optional Carto Maps API Key (falls back to OpenStreetMap)
+# Optional Carto Maps API key (falls back to OpenStreetMap)
 VITE_CARTO_API_KEY=
 ```
 
@@ -89,10 +94,11 @@ npm install
 
 ### Database Migration
 Initialize the database tables and columns:
+`api/migrate.js` is a script, not an HTTP endpoint (exposing schema changes over HTTP would be unauthenticated). Run it with the database URL in your environment:
 ```bash
-# Direct call to migration endpoint (or run via vercel dev)
-curl -X POST http://localhost:3000/api/migrate
+NEON_DATABASE_URL=postgres://... node api/migrate.js
 ```
+It is idempotent and safe to re-run. `api/scrape.js` also applies the newest column additions before each scrape.
 
 ### Running Locally
 ```bash
@@ -134,10 +140,14 @@ The algorithmic value score is calculated as:
 
 $$\text{Value Score} = \frac{\text{Suburb Median Rate (R/m²)}}{\text{Listing Price per m²}}$$
 
-- **Score $\ge 1.20$** with medium/high confidence ($n \ge 8$): **Good value** (at least 15–20% more space per Rand than suburb median).
+- **Score $\ge 1.20$** with medium/high confidence ($n \ge 8$): **Good value** (about 17%+ cheaper per m² than the suburb median).
 - **Score $\ge 1.20$** with low confidence ($3 \le n < 8$): **Potential value** (illustrative pending more comparables).
 - **Score $0.80 < \text{Score} < 1.20$**: **Typical price** (fair market alignment).
 - **Score $\le 0.80$**: **Premium price** (above median per square meter).
 - **$n < 3$ comparables**: **Unrated** (insufficient sample size).
+
+Listings without a floor area are scored against the median rent of same-bedroom listings in the suburb instead (`value_score = median rent / rent`), and the detail panel says which basis was used. Sample size ($n$) counts the comparables on that same basis.
+
+The thresholds are defined once per runtime: `VALUE_THRESHOLDS` in `src/utils/confidence.js` (UI) and `api/confidence.js` (API).
 
 Floor area, furnishings, private parking, security, and views can materially affect rents; algorithmic scores serve as initial screening benchmarks.

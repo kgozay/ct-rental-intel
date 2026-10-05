@@ -1,23 +1,40 @@
-import { useState, useEffect, useMemo, useRef, Suspense, lazy } from 'react';
+import { useState, useEffect, useMemo, useCallback, Suspense, lazy } from 'react';
 import { Link } from 'react-router-dom';
 import ListingsTable from './components/ListingsTable';
 import SearchIntentBar from './components/SearchIntentBar';
 import ResultsToolbar from './components/ResultsToolbar';
+import { VIEW_TABS } from './constants/views';
 import ListingCardView from './components/ListingCardView';
 import FirstRunState from './components/FirstRunState';
 import DataStatusBar from './components/DataStatusBar';
 import ShortlistWorkspace from './components/ShortlistWorkspace';
 import SavedSearchesModal from './components/SavedSearchesModal';
-import { SUBURBS_LIST } from './utils/suburbs';
+import Icon from './components/Icon';
+import { useRentalData } from './hooks/useRentalData';
 import { exportCsv } from './utils/exportCsv';
+import { getInitialTheme, applyTheme } from './utils/theme';
+import { buildComparables, getListingValuation, isValueOpportunity } from './utils/valuation';
+import {
+  matchesFilters,
+  sortListings,
+  sortFromId,
+  sortToId,
+  filtersFromSearch,
+  filtersToParams,
+  normaliseFilters,
+} from './utils/filters';
+import { DEFAULT_FILTERS, DEFAULT_SORT } from './constants/filterConstants';
 import {
   loadUserData,
   addShortlistItem,
   removeShortlistItem,
+  restoreShortlistItem,
   updateItemNote,
   saveSearchConfig,
   deleteSearchConfig,
+  restoreSearchConfig,
   renameSearchConfig,
+  markSearchViewed,
 } from './utils/userStorage';
 
 const PriceChart = lazy(() => import('./components/PriceChart'));
@@ -26,58 +43,169 @@ const AIPanel = lazy(() => import('./components/AIPanel'));
 const SuburbComparison = lazy(() => import('./components/SuburbComparison'));
 const ListingDrawer = lazy(() => import('./components/ListingDrawer'));
 
+const VALID_VIEWS = VIEW_TABS.map(t => t.id);
+const MOBILE_QUERY = '(max-width: 767px)';
+
+function median(nums) {
+  if (!nums.length) return null;
+  const sorted = [...nums].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 ? sorted[mid] : Math.round((sorted[mid - 1] + sorted[mid]) / 2);
+}
+
+function readInitialUrlState() {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const view = params.get('view');
+    const isMobile = window.matchMedia?.(MOBILE_QUERY).matches;
+    const shared = (params.get('shared') || '').split(',').map(s => s.trim()).filter(Boolean);
+    return {
+      // Wide tables are hard to read on phones, so default to cards there.
+      view: VALID_VIEWS.includes(view) ? view : isMobile ? 'cards' : 'table',
+      filters: filtersFromSearch(window.location.search),
+      sort: params.get('sort') ? sortFromId(params.get('sort')) : { ...DEFAULT_SORT },
+      shared,
+    };
+  } catch {
+    return { view: 'table', filters: { ...DEFAULT_FILTERS }, sort: { ...DEFAULT_SORT }, shared: [] };
+  }
+}
+
+const fmtRate = (n) => (n == null ? '—' : `R${n.toLocaleString('en-ZA')}`);
+
 export default function App() {
-  const [theme, setTheme] = useState(() => {
-    return localStorage.getItem('theme') || 'light';
-  });
+  const [initialUrl] = useState(readInitialUrlState);
+
+  const [theme, setTheme] = useState(getInitialTheme);
+  useEffect(() => {
+    applyTheme(theme, false);
+  }, [theme]);
+  const toggleTheme = () => {
+    const next = theme === 'dark' ? 'light' : 'dark';
+    applyTheme(next, true);
+    setTheme(next);
+  };
+
+  const {
+    listings,
+    dataStatus,
+    loading,
+    refreshing,
+    feedbackMessage,
+    setFeedbackMessage,
+    refetch,
+    triggerRefresh,
+  } = useRentalData({ pollWhileRefreshing: true });
+
+  const [history, setHistory] = useState([]);
+  const [historyBeds, setHistoryBeds] = useState(null);
+  useEffect(() => {
+    const controller = new AbortController();
+    const url = historyBeds ? `/api/history?beds=${historyBeds}` : '/api/history';
+    fetch(url, { signal: controller.signal })
+      .then(r => (r.ok ? r.json() : null))
+      .then(data => { if (data) setHistory(Array.isArray(data.history) ? data.history : []); })
+      .catch(() => {});
+    return () => controller.abort();
+  }, [historyBeds]);
+
+  const [activeTab, setActiveTab] = useState(initialUrl.view);
+  const [filters, setFilters] = useState(initialUrl.filters);
+  const [sort, setSort] = useState(initialUrl.sort);
+  const [showMoreFilters, setShowMoreFilters] = useState(false);
+  const [selected, setSelected] = useState(null);
+  const resetFilters = useCallback(() => setFilters({ ...DEFAULT_FILTERS }), []);
 
   useEffect(() => {
-    document.documentElement.classList.toggle('dark', theme === 'dark');
-    localStorage.setItem('theme', theme);
-  }, [theme]);
+    document.title = 'Dashboard | Cape Town Rental Intel';
+  }, []);
 
-  const [listings, setListings] = useState([]);
-  const [history, setHistory] = useState([]);
-  const [lastScraped, setLastScraped] = useState(null);
-  const [dataStatus, setDataStatus] = useState(null);
-
-  const [loading, setLoading] = useState(true);
-  const [scraping, setScraping] = useState(false);
-  const [notice, setNotice] = useState(null);
-  const [activeTab, setActiveTab] = useState(() => {
+  // "New since last visit"
+  const [lastVisit] = useState(() => {
     try {
-      const params = new URLSearchParams(window.location.search);
-      const view = params.get('view');
-      const valid = ['table', 'cards', 'map', 'charts', 'compare', 'ai', 'shortlist'];
-      return valid.includes(view) ? view : 'table';
+      const prev = localStorage.getItem('lastVisit');
+      localStorage.setItem('lastVisit', new Date().toISOString());
+      return prev;
     } catch {
-      return 'table';
+      return null;
     }
   });
-  const [showMoreFilters, setShowMoreFilters] = useState(false);
-  const [selectedListing, setSelectedListing] = useState(null);
 
-  // Bedroom filter for the history chart (drives a separate /api/history fetch)
-  const [historyBeds, setHistoryBeds] = useState(null);
+  // Keep the URL in sync for shareable deep links.
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams();
+      if (activeTab) params.set('view', activeTab);
+      filtersToParams(filters, params);
+      if (sortToId(sort) !== sortToId(DEFAULT_SORT)) params.set('sort', sortToId(sort));
+      const query = params.toString();
+      window.history.replaceState(null, '', query ? `${window.location.pathname}?${query}` : window.location.pathname);
+    } catch (err) {
+      console.debug('Failed to sync filters to URL state:', err);
+    }
+  }, [filters, activeTab, sort]);
 
-  // Versioned User Data (Shortlist, Notes, Snapshots, Saved Searches)
-  const [userData, setUserData] = useState(() => loadUserData());
+  // ---- Valuation evidence -------------------------------------------------
+  const comparables = useMemo(() => buildComparables(listings), [listings]);
+  const enriched = useMemo(
+    () => listings.map(l => ({ ...l, valuation: getListingValuation(l, comparables) })),
+    [listings, comparables]
+  );
+  const byUrl = useMemo(() => new Map(enriched.map(l => [l.url, l])), [enriched]);
+
+  // Like-for-like rent medians (suburb + bedrooms) for the drawer and AI read.
+  const rentMedians = useMemo(() => {
+    const groups = {};
+    for (const l of listings) {
+      if (typeof l.price !== 'number' || l.price <= 0) continue;
+      (groups[`${l.suburb}|${l.bedrooms ?? 'na'}`] ||= []).push(l.price);
+      (groups[`${l.suburb}|all`] ||= []).push(l.price);
+    }
+    const out = {};
+    for (const [k, v] of Object.entries(groups)) out[k] = { median: median(v), n: v.length };
+    return out;
+  }, [listings]);
+
+  // ---- User data: shortlist, notes, saved searches -------------------------
+  const [userData, setUserData] = useState(loadUserData);
   const shortlisted = useMemo(() => new Set(Object.keys(userData?.items || {})), [userData]);
+  const [toast, setToast] = useState(null);
+
+  useEffect(() => {
+    if (!toast) return undefined;
+    const id = setTimeout(() => setToast(null), 7000);
+    return () => clearTimeout(id);
+  }, [toast]);
 
   const toggleShortlist = (url, listing = null) => {
     if (shortlisted.has(url)) {
+      const entry = userData.items[url];
       setUserData(prev => removeShortlistItem(prev, url));
+      setToast({
+        message: 'Removed from shortlist',
+        undo: () => setUserData(prev => restoreShortlistItem(prev, url, entry)),
+      });
     } else {
-      const item = listing || listings.find(l => l.url === url);
+      const item = listing || byUrl.get(url);
       setUserData(prev => addShortlistItem(prev, url, item));
     }
   };
 
-  const handleUpdateNote = (url, note) => {
-    setUserData(prev => updateItemNote(prev, url, note));
+  const handleUpdateNote = (url, note) => setUserData(prev => updateItemNote(prev, url, note));
+
+  // Shared shortlist links (?shared=<listing ids>)
+  const [sharedIds, setSharedIds] = useState(initialUrl.shared);
+  const sharedListings = useMemo(
+    () => (sharedIds.length ? enriched.filter(l => l.listing_id && sharedIds.includes(String(l.listing_id))) : []),
+    [enriched, sharedIds]
+  );
+  const importShared = () => {
+    setUserData(prev => sharedListings.reduce((acc, l) => (acc.items?.[l.url] ? acc : addShortlistItem(acc, l.url, l)), prev));
+    setSharedIds([]);
+    setActiveTab('shortlist');
+    setToast({ message: `Added ${sharedListings.length} shared listing${sharedListings.length === 1 ? '' : 's'} to your shortlist` });
   };
 
-  // Saved searches state & handlers
   const [showSavedSearchesModal, setShowSavedSearchesModal] = useState(false);
   const [recentlyDeletedSearch, setRecentlyDeletedSearch] = useState(null);
 
@@ -85,316 +213,166 @@ export default function App() {
     const { updated } = saveSearchConfig(userData, name, filters);
     setUserData(updated);
   };
-
   const handleDeleteSearch = (id) => {
     const { updated, deletedEntry } = deleteSearchConfig(userData, id);
     setUserData(updated);
     setRecentlyDeletedSearch(deletedEntry);
   };
-
   const handleUndoDeleteSearch = () => {
     if (!recentlyDeletedSearch) return;
-    const { updated } = saveSearchConfig(userData, recentlyDeletedSearch.name, recentlyDeletedSearch.filters);
-    setUserData(updated);
+    setUserData(prev => restoreSearchConfig(prev, recentlyDeletedSearch));
     setRecentlyDeletedSearch(null);
   };
-
-  const handleRenameSearch = (id, newName) => {
-    setUserData(prev => renameSearchConfig(prev, id, newName));
+  const handleRenameSearch = (id, newName) => setUserData(prev => renameSearchConfig(prev, id, newName));
+  const handleApplySearch = (search) => {
+    setFilters(normaliseFilters(search.filters));
+    setUserData(prev => markSearchViewed(prev, search.id));
   };
 
-  const handleApplySearch = (savedFilters) => {
-    setFilters(prev => ({
-      ...prev,
-      ...savedFilters,
-    }));
+  const savedSearches = useMemo(() => userData?.savedSearches || [], [userData]);
+  const savedSearchCounts = useMemo(() => {
+    const out = {};
+    for (const s of savedSearches) {
+      const since = s.lastViewedAt || s.createdAt;
+      let total = 0;
+      let fresh = 0;
+      for (const l of enriched) {
+        if (!matchesFilters(l, s.filters, { shortlisted })) continue;
+        total++;
+        if (since && l.created_at && l.created_at > since) fresh++;
+      }
+      out[s.id] = { total, fresh };
+    }
+    return out;
+  }, [savedSearches, enriched, shortlisted]);
+  const savedSearchNewCount = Object.values(savedSearchCounts).reduce((sum, c) => sum + c.fresh, 0);
+
+  // ---- Results -------------------------------------------------------------
+  const filteredListings = useMemo(
+    () => enriched.filter(item => matchesFilters(item, filters, { shortlisted })),
+    [enriched, filters, shortlisted]
+  );
+  const sortedListings = useMemo(() => sortListings(filteredListings, sort), [filteredListings, sort]);
+
+  const handleHeaderSort = (field) => {
+    setSort(prev => (prev.field === field
+      ? { field, asc: !prev.asc }
+      : { field, asc: !['value_score', 'size_m2'].includes(field) }));
   };
 
-  // "New since last visit" — record when the user last opened the dashboard
-  const [lastVisit] = useState(() => {
-    const prev = localStorage.getItem('lastVisit');
-    localStorage.setItem('lastVisit', new Date().toISOString());
-    return prev;
-  });
+  const activeSecondaryFilterCount = [
+    filters.minPrice > 0,
+    filters.minSize > 0,
+    filters.minBaths !== null,
+    filters.propertyTypes.length > 0,
+    filters.furnished !== null,
+    filters.goodValueOnly,
+    filters.priceDropOnly,
+    Boolean(filters.availableBefore),
+  ].filter(Boolean).length;
 
-  const [filters, setFilters] = useState(() => {
-    try {
-      const params = new URLSearchParams(window.location.search);
-      const subParam = params.get('suburbs');
-      const maxP = params.get('maxPrice');
-      const beds = params.get('minBeds');
-      const furn = params.get('furnished');
-      const q = params.get('search');
-      return {
-        search: q || '',
-        suburbs: subParam ? subParam.split(',').filter(s => SUBURBS_LIST.includes(s)) : [...SUBURBS_LIST],
-        maxPrice: maxP ? parseInt(maxP, 10) : 80000,
-        minBeds: beds ? parseInt(beds, 10) : null,
-        furnished: furn === 'true' ? true : furn === 'false' ? false : null,
-        goodValueOnly: params.get('goodValue') === 'true',
-        priceDropOnly: params.get('priceDrop') === 'true',
-        availableBefore: params.get('avail') || '',
-        shortlistOnly: params.get('shortlist') === 'true',
-      };
-    } catch {
-      return {
-        search: '',
-        suburbs: [...SUBURBS_LIST],
-        maxPrice: 80000,
-        minBeds: null,
-        furnished: null,
-        goodValueOnly: false,
-        priceDropOnly: false,
-        availableBefore: '',
-        shortlistOnly: false,
-      };
+  const valueCount = filteredListings.filter(l => isValueOpportunity(l.valuation)).length;
+  const medianRate = median(filteredListings.map(l => l.price_per_m2).filter(r => typeof r === 'number' && r > 0));
+  const newCount = lastVisit ? filteredListings.filter(l => l.created_at && l.created_at > lastVisit).length : 0;
+
+  // ---- Drawer --------------------------------------------------------------
+  const shortlistNavList = useMemo(
+    () => sortListings(enriched.filter(l => shortlisted.has(l.url)), sort),
+    [enriched, shortlisted, sort]
+  );
+  const navList = activeTab === 'shortlist' ? shortlistNavList : sortedListings;
+  const current = selected ? byUrl.get(selected.url) || selected : null;
+  const navIndex = current ? navList.findIndex(l => l.url === current.url) : -1;
+  const goPrev = navIndex > 0 ? () => setSelected(navList[navIndex - 1]) : null;
+  const goNext = navIndex >= 0 && navIndex < navList.length - 1 ? () => setSelected(navList[navIndex + 1]) : null;
+  const closeDrawer = useCallback(() => setSelected(null), []);
+
+  const drawerMedian = (() => {
+    if (!current) return { median: null, label: 'median' };
+    const like = rentMedians[`${current.suburb}|${current.bedrooms ?? 'na'}`];
+    if (current.bedrooms != null && like && like.n >= 3) {
+      return { median: like.median, label: current.bedrooms === 0 ? 'studio median' : `${current.bedrooms}-bed median` };
     }
-  });
-
-  // Keep URL in sync with active filters and view for shareable deep links
-  useEffect(() => {
-    try {
-      const params = new URLSearchParams();
-      if (activeTab && activeTab !== 'table') params.set('view', activeTab);
-      if (filters.search) params.set('search', filters.search);
-      if (filters.suburbs.length < SUBURBS_LIST.length) params.set('suburbs', filters.suburbs.join(','));
-      if (filters.maxPrice < 80000) params.set('maxPrice', String(filters.maxPrice));
-      if (filters.minBeds !== null) params.set('minBeds', String(filters.minBeds));
-      if (filters.furnished !== null) params.set('furnished', String(filters.furnished));
-      if (filters.goodValueOnly) params.set('goodValue', 'true');
-      if (filters.priceDropOnly) params.set('priceDrop', 'true');
-      if (filters.availableBefore) params.set('avail', filters.availableBefore);
-      if (filters.shortlistOnly) params.set('shortlist', 'true');
-
-      const query = params.toString();
-      const nextUrl = query ? `${window.location.pathname}?${query}` : window.location.pathname;
-      window.history.replaceState(null, '', nextUrl);
-    } catch (err) {
-      console.debug('Failed to sync filters to URL state:', err);
-    }
-  }, [filters, activeTab]);
-
-  const pollRef = useRef(null);
-
-  const fetchData = async (silent = false) => {
-    if (!silent) setLoading(true);
-    let fetchedLastScraped = null;
-    try {
-      const listUrl = silent ? `/api/listings?_t=${Date.now()}` : '/api/listings';
-      const listRes = await fetch(listUrl);
-      if (listRes.ok) {
-        const listData = await listRes.json();
-        setListings(listData.listings || []);
-        setLastScraped(listData.lastScraped);
-        setDataStatus(listData.dataStatus || null);
-        fetchedLastScraped = listData.lastScraped;
-      }
-
-      const histRes = await fetch('/api/history');
-      if (histRes.ok) {
-        const histData = await histRes.json();
-        setHistory(Array.isArray(histData.history) ? histData.history : []);
-      }
-    } catch (err) {
-      console.error("Failed to fetch dashboard data:", err);
-    } finally {
-      if (!silent) setLoading(false);
-    }
-    return fetchedLastScraped;
-  };
-
-  useEffect(() => {
-    document.title = "Dashboard | Cape Town Rental Intel";
-    Promise.resolve().then(() => {
-      fetchData();
-    });
-    return () => { if (pollRef.current) clearInterval(pollRef.current); };
-  }, []);
-
-  // Re-fetch history when the bedroom filter on the chart changes
-  useEffect(() => {
-    const url = historyBeds ? `/api/history?beds=${historyBeds}` : '/api/history';
-    fetch(url)
-      .then(r => r.ok ? r.json() : null)
-      .then(data => { if (data) setHistory(Array.isArray(data.history) ? data.history : []); })
-      .catch(() => {});
-  }, [historyBeds]);
-
-  const handleRefresh = async () => {
-    if (scraping) return;
-    setScraping(true);
-    setNotice(null);
-    const baselineLastScraped = lastScraped;
-    try {
-      const response = await fetch('/api/scrape', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' }
-      });
-      const data = await response.json().catch(() => ({}));
-
-      if (response.ok && data.skipped) {
-        const next = data.nextAllowed ? new Date(data.nextAllowed) : null;
-        const nextText = next
-          ? next.toLocaleString('en-ZA', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false }).replace(',', '')
-          : null;
-        setNotice({
-          type: 'info',
-          text: `Data is still fresh — updates are limited to once every 2 days (48h cooldown).${nextText ? ` Next snapshot available ${nextText}.` : ''}`
-        });
-        setScraping(false);
-      } else if (response.ok && data.started) {
-        setNotice({
-          type: 'info',
-          text: 'Scrape started — new listings appear within a minute or two. Refreshing automatically…'
-        });
-        if (pollRef.current) clearInterval(pollRef.current);
-        let attempts = 0;
-        const MAX_ATTEMPTS = 6;
-        pollRef.current = setInterval(async () => {
-          attempts += 1;
-          const newLastScraped = await fetchData(true);
-          const landed = newLastScraped && newLastScraped !== baselineLastScraped;
-          if (landed || attempts >= MAX_ATTEMPTS) {
-            clearInterval(pollRef.current);
-            pollRef.current = null;
-            setScraping(false);
-            setNotice(landed
-              ? { type: 'info', text: 'Listings updated with the latest scrape.' }
-              : { type: 'info', text: 'Scrape is still running — data will update shortly. You can keep using the dashboard.' });
-          }
-        }, 20000);
-      } else {
-        setNotice({ type: 'error', text: 'Scrape failed to start — this is usually an Apify quota or API key issue. Try again in a few minutes.' });
-        setScraping(false);
-      }
-    } catch (err) {
-      console.error(err);
-      setNotice({ type: 'error', text: 'Error starting scraper.' });
-      setScraping(false);
-    }
-  };
-
-  const filteredListings = useMemo(() => listings.filter(item => {
-    // Search query filter
-    if (filters.search && filters.search.trim()) {
-      const q = filters.search.toLowerCase().trim();
-      const matchAddress = item.address && item.address.toLowerCase().includes(q);
-      const matchSuburb = item.suburb && item.suburb.toLowerCase().includes(q);
-      const matchType = item.property_type && item.property_type.toLowerCase().includes(q);
-      const matchAgency = item.agency_name && item.agency_name.toLowerCase().includes(q);
-      if (!matchAddress && !matchSuburb && !matchType && !matchAgency) return false;
-    }
-    if (filters.suburbs.length > 0 && !filters.suburbs.includes(item.suburb)) return false;
-    if (item.price > filters.maxPrice) return false;
-    if (filters.minBeds !== null && (item.bedrooms === null || item.bedrooms < filters.minBeds)) return false;
-    if (filters.furnished !== null && item.furnished !== filters.furnished) return false;
-    if (filters.goodValueOnly && (item.value_score === null || item.value_score <= 1.15)) return false;
-    if (filters.priceDropOnly && !(item.previous_price && item.price < item.previous_price)) return false;
-    if (filters.availableBefore && item.available_date && item.available_date > filters.availableBefore) return false;
-    if (filters.shortlistOnly && !shortlisted.has(item.url)) return false;
-    return true;
-  }), [listings, filters, shortlisted]);
-
-  const displayedListings = useMemo(() => {
-    if (activeTab === 'shortlist') {
-      return filteredListings.filter(l => shortlisted.has(l.url));
-    }
-    return filteredListings;
-  }, [filteredListings, activeTab, shortlisted]);
-
-  const activeSecondaryFilterCount = useMemo(() => {
-    let count = 0;
-    if (filters.furnished !== null) count++;
-    if (filters.goodValueOnly) count++;
-    if (filters.priceDropOnly) count++;
-    if (filters.availableBefore) count++;
-    return count;
-  }, [filters]);
-
-  const goodValueCount = filteredListings.filter(l => l.value_score > 1.15).length;
-  const isFiltered = filteredListings.length !== listings.length;
-
-  const rates = filteredListings.map(l => l.price_per_m2).filter(r => r !== null).sort((a, b) => a - b);
-  let medianRate = '—';
-  if (rates.length > 0) {
-    const mid = Math.floor(rates.length / 2);
-    medianRate = rates.length % 2 !== 0
-      ? `R ${rates[mid]}`
-      : `R ${Math.round((rates[mid - 1] + rates[mid]) / 2)}`;
-  }
-
-  const suburbMedianPrices = useMemo(() => {
-    const groups = {};
-    listings.forEach(l => {
-      if (typeof l.price === 'number' && l.price > 0) {
-        if (!groups[l.suburb]) groups[l.suburb] = [];
-        groups[l.suburb].push(l.price);
-      }
-    });
-    const result = {};
-    Object.entries(groups).forEach(([suburb, prices]) => {
-      const sorted = [...prices].sort((a, b) => a - b);
-      const mid = Math.floor(sorted.length / 2);
-      result[suburb] = sorted.length % 2 !== 0 ? sorted[mid] : Math.round((sorted[mid - 1] + sorted[mid]) / 2);
-    });
-    return result;
-  }, [listings]);
-
-  const isFirstRun = !loading && (dataStatus?.state === 'empty' || (listings.length === 0 && !lastScraped));
+    return { median: rentMedians[`${current.suburb}|all`]?.median ?? null, label: 'median rent (all sizes)' };
+  })();
 
   const handleDrillDown = (suburb, beds) => {
     setFilters(prev => ({ ...prev, suburbs: [suburb], minBeds: beds }));
-    setActiveTab('table');
+    setActiveTab(window.matchMedia?.(MOBILE_QUERY).matches ? 'cards' : 'table');
   };
 
-  const formatScrapeDate = (dateStr) => {
-    if (!dateStr) return 'Never';
-    const date = new Date(dateStr);
-    return date.toLocaleString('en-ZA', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false }).replace(',', '');
-  };
+  const isUnavailable = !loading && dataStatus?.state === 'unavailable' && listings.length === 0;
+  const isFirstRun = !loading && dataStatus?.state === 'empty';
+  const exportRows = activeTab === 'shortlist'
+    ? shortlistNavList.map(l => ({ ...l, userNote: userData.items[l.url]?.note || '' }))
+    : sortedListings;
 
   return (
-    <div className="max-w-[1100px] mx-auto px-6 py-8">
-      {/* BRAND HEADER BAR */}
-      <header className="bg-ink text-paper border-2 border-ink shadow-[4px_4px_0_#111111] flex flex-wrap items-center justify-between px-5 py-3.5 mb-6 rounded-none select-none">
-        <Link to="/" className="text-xl md:text-2xl font-black tracking-tight uppercase no-underline text-paper hover:opacity-90">
+    <div className="max-w-[1100px] mx-auto px-4 sm:px-6 py-5 sm:py-8">
+      <header className="bg-ink text-paper border-2 border-ink shadow-[4px_4px_0_#111111] flex items-center justify-between gap-3 px-4 sm:px-5 py-3 mb-5">
+        <Link to="/" className="text-lg md:text-2xl font-black tracking-tight uppercase no-underline text-paper hover:opacity-90" aria-label="Cape Town Rental Intel — home">
           Cape Town Rental<span className="text-yellow">.</span>Intel
         </Link>
-        <div className="flex items-center gap-3 text-[0.8125rem] font-bold flex-wrap">
-          <Link to="/" className="opacity-70 hover:opacity-100 no-underline text-paper uppercase tracking-wider text-xs">← Home</Link>
-          <span className="opacity-75 text-xs">Scraped: {formatScrapeDate(lastScraped)}</span>
-          <button
-            onClick={() => setTheme(prev => prev === 'dark' ? 'light' : 'dark')}
-            className="border-2 border-paper bg-paper text-ink font-extrabold px-2.5 py-1 cursor-pointer hover:bg-neutral-100 transition-all select-none text-xs leading-none flex items-center justify-center rounded-none shadow-[2px_2px_0_#FAF6E9]"
-            aria-label={theme === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
-          >
-            {theme === 'dark' ? '☀️ Light' : '🌙 Dark'}
-          </button>
-          <button
-            onClick={handleRefresh}
-            disabled={scraping}
-            className="border-2 border-ink bg-yellow text-ink font-black uppercase px-3 py-1.5 text-xs tracking-wide cursor-pointer transition-all duration-75 select-none hover:translate-x-[-1px] hover:translate-y-[-1px] hover:shadow-[3px_3px_0_#111111] active:translate-x-[2px] active:translate-y-[2px] active:shadow-none disabled:bg-neutral-300 disabled:text-neutral-500 disabled:cursor-not-allowed"
-          >
-            {scraping ? '⏳ Scraping P24...' : '↻ Refresh'}
-          </button>
-        </div>
+        <button
+          type="button"
+          onClick={toggleTheme}
+          className="w-10 h-10 shrink-0 border-2 border-paper bg-paper text-ink inline-flex items-center justify-center cursor-pointer hover:bg-neutral-100"
+          aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+          title={theme === 'dark' ? 'Light mode' : 'Dark mode'}
+        >
+          <Icon name={theme === 'dark' ? 'sun' : 'moon'} size={18} />
+        </button>
       </header>
 
-      {/* VISIBLE DATA STATUS & PROVENANCE BAR */}
       <DataStatusBar
         dataStatus={dataStatus}
-        onRefresh={handleRefresh}
-        isRefreshing={scraping}
-        feedbackMessage={notice ? { type: notice.type === 'error' ? 'error' : 'info', message: notice.text } : null}
-        onClearFeedback={() => setNotice(null)}
+        onRefresh={triggerRefresh}
+        onRetry={isUnavailable ? null : () => refetch(false)}
+        isRefreshing={refreshing}
+        feedbackMessage={feedbackMessage}
+        onClearFeedback={() => setFeedbackMessage(null)}
       />
 
-      {/* FIRST RUN EMPTY STATE */}
-      {isFirstRun ? (
-        <FirstRunState onStartScrape={handleRefresh} isStarting={scraping} />
+      {sharedIds.length > 0 && !loading && (
+        <div role="region" aria-label="Shared shortlist" className="mb-4 border-2 border-ink bg-white p-3 flex flex-wrap items-center justify-between gap-3 shadow-[2px_2px_0_#111111]">
+          <p className="text-sm font-bold text-ink m-0">
+            Someone shared a shortlist with you: {sharedListings.length} of {sharedIds.length} listing{sharedIds.length === 1 ? ' is' : 's are'} still available.
+          </p>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={importShared}
+              disabled={sharedListings.length === 0}
+              className="min-h-[38px] border-2 border-ink bg-yellow text-ink text-xs font-black uppercase px-3 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              Add to my shortlist
+            </button>
+            <button type="button" onClick={() => setSharedIds([])} className="min-h-[38px] border-2 border-ink bg-white text-ink text-xs font-black uppercase px-3 cursor-pointer">
+              Dismiss
+            </button>
+          </div>
+        </div>
+      )}
+
+      {isUnavailable ? (
+        <div className="border-[3px] border-ink bg-white p-8 text-center shadow-[4px_4px_0_#111111]">
+          <Icon name="warning" size={32} className="mx-auto mb-3 text-bred" />
+          <h2 className="text-lg font-black uppercase text-ink mb-2">We couldn&rsquo;t load market data</h2>
+          <p className="text-sm text-ink/80 max-w-md mx-auto mb-5">
+            The listings service didn&rsquo;t respond. Nothing is wrong with your filters — this is usually temporary.
+          </p>
+          <button
+            type="button"
+            onClick={() => refetch(false)}
+            className="border-[3px] border-ink bg-yellow text-ink text-sm font-black uppercase px-5 py-2.5 cursor-pointer shadow-[3px_3px_0_#111111] inline-flex items-center gap-2"
+          >
+            <Icon name="refresh" /> Try again
+          </button>
+        </div>
+      ) : isFirstRun ? (
+        <FirstRunState onStartScrape={triggerRefresh} isStarting={refreshing} />
       ) : (
         <>
-          {/* SEARCH INTENT BAR */}
           <SearchIntentBar
             filters={filters}
             setFilters={setFilters}
@@ -403,97 +381,80 @@ export default function App() {
             showMoreFilters={showMoreFilters}
             activeSecondaryFilterCount={activeSecondaryFilterCount}
             onOpenSavedSearches={() => setShowSavedSearchesModal(true)}
-            savedSearchesCount={userData?.savedSearches?.length || 0}
+            savedSearchesCount={savedSearches.length}
+            savedSearchNewCount={savedSearchNewCount}
           />
 
-          {/* 3 STABLE KPI BENCHMARKS */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6 select-none">
-            <div className="kpi-card bg-yellow border-2 border-ink shadow-[3px_3px_0_#111111] p-3.5">
-              <div className="text-2xl md:text-3xl font-black font-mono tabular-nums leading-none text-ink">
-                {displayedListings.length}
-              </div>
-              <div className="text-[11px] font-black uppercase tracking-wider text-ink/70 mt-1.5">
-                Matching Rentals{isFiltered ? ' (filtered)' : ''}
-              </div>
+          <dl className="grid grid-cols-3 gap-2 sm:gap-3 mb-5 m-0">
+            <div className="kpi-card bg-yellow border-2 border-ink shadow-[3px_3px_0_#111111] p-2.5 sm:p-3.5 flex flex-col-reverse justify-end">
+              <dt className="text-[11px] font-black uppercase tracking-wider text-ink/80 mt-1.5">
+                Matching{newCount > 0 && <span className="normal-case tracking-normal"> · {newCount} new</span>}
+              </dt>
+              <dd className="text-xl sm:text-3xl font-black font-mono tabular-nums leading-none text-ink m-0">{filteredListings.length}</dd>
             </div>
-
-            <div className="kpi-card bg-white border-2 border-ink shadow-[3px_3px_0_#111111] p-3.5">
-              <div className="text-2xl md:text-3xl font-black font-mono tabular-nums leading-none text-ink">
-                {goodValueCount}
-              </div>
-              <div className="text-[11px] font-black uppercase tracking-wider text-ink/70 mt-1.5">
-                Value Opportunities
-              </div>
+            <div className="kpi-card bg-white border-2 border-ink shadow-[3px_3px_0_#111111] p-2.5 sm:p-3.5 flex flex-col-reverse justify-end">
+              <dt className="text-[11px] font-black uppercase tracking-wider text-ink/80 mt-1.5">Value picks</dt>
+              <dd className="text-xl sm:text-3xl font-black font-mono tabular-nums leading-none text-ink m-0">{valueCount}</dd>
             </div>
-
-            <div className="kpi-card bg-white border-2 border-ink shadow-[3px_3px_0_#111111] p-3.5">
-              <div className="text-2xl md:text-3xl font-black font-mono tabular-nums leading-none text-ink">
-                {medianRate}
-              </div>
-              <div className="text-[11px] font-black uppercase tracking-wider text-ink/70 mt-1.5">
-                Median Rate (R/m²)
-              </div>
+            <div className="kpi-card bg-white border-2 border-ink shadow-[3px_3px_0_#111111] p-2.5 sm:p-3.5 flex flex-col-reverse justify-end">
+              <dt className="text-[11px] font-black uppercase tracking-wider text-ink/80 mt-1.5">Median R/m²</dt>
+              <dd className="text-xl sm:text-3xl font-black font-mono tabular-nums leading-none text-ink m-0">{fmtRate(medianRate)}</dd>
             </div>
-          </div>
+          </dl>
 
-          {/* RESULTS TOOLBAR */}
           <ResultsToolbar
-            totalCount={displayedListings.length}
+            totalCount={activeTab === 'shortlist' ? shortlisted.size : sortedListings.length}
             activeTab={activeTab}
             onTabChange={setActiveTab}
             shortlistedCount={shortlisted.size}
-            onExportCsv={() => exportCsv(displayedListings)}
-            showExport={activeTab === 'table' || activeTab === 'cards' || activeTab === 'shortlist'}
+            onExportCsv={() => exportCsv(exportRows, activeTab === 'shortlist' ? 'ct-shortlist' : 'ct-rentals')}
+            showExport={activeTab === 'table' || activeTab === 'cards'}
+            sort={sort}
+            onSortChange={(id) => setSort(sortFromId(id))}
+            showSort={['table', 'cards', 'shortlist'].includes(activeTab)}
           />
 
-          {/* RENDER VIEW TAB CONTENT */}
-          {loading ? (
-            <div className="border-[3px] border-ink bg-white p-6 shadow-[6px_6px_0_#111111] animate-pulse">
-              <div className="flex justify-between items-center mb-6">
-                <div className="h-6 w-48 bg-neutral-200 border border-ink/20" />
-                <div className="h-6 w-32 bg-neutral-200 border border-ink/20" />
+          <main id={`panel-${activeTab}`} role="tabpanel" aria-labelledby={`tab-${activeTab}`} tabIndex={-1}>
+            {loading ? (
+              <div className="border-[3px] border-ink bg-white p-6 shadow-[6px_6px_0_#111111] animate-pulse" role="status" aria-label="Loading listings">
+                <div className="space-y-3">
+                  {[0, 1, 2, 3, 4].map(i => <div key={i} className="h-10 bg-neutral-100 border border-ink/10 w-full" />)}
+                </div>
+                <div className="text-center text-ink/80 font-black text-xs uppercase tracking-wider pt-4">Loading market data…</div>
               </div>
-              <div className="space-y-3 mb-6">
-                <div className="h-10 bg-neutral-100 border border-ink/10 w-full" />
-                <div className="h-10 bg-neutral-100 border border-ink/10 w-full" />
-                <div className="h-10 bg-neutral-100 border border-ink/10 w-full" />
-                <div className="h-10 bg-neutral-100 border border-ink/10 w-full" />
-              </div>
-              <div className="text-center text-neutral-400 font-black text-xs uppercase tracking-wider py-2">
-                ✦ Fetching live rental market intelligence...
-              </div>
-            </div>
-          ) : (
-            <main>
+            ) : (
               <Suspense
                 fallback={
-                  <div className="border-[3px] border-ink bg-white p-16 text-center shadow-[6px_6px_0_#111111]">
-                    <div className="text-neutral-400 font-extrabold text-lg animate-pulse">
-                      ⏳ Loading view...
-                    </div>
+                  <div className="border-[3px] border-ink bg-white p-16 text-center shadow-[6px_6px_0_#111111]" role="status">
+                    <div className="text-ink/80 font-extrabold text-lg animate-pulse">Loading view…</div>
                   </div>
                 }
               >
                 {activeTab === 'table' && (
                   <ListingsTable
-                    listings={listings}
-                    filteredListings={displayedListings}
+                    listings={sortedListings}
+                    totalListings={listings.length}
                     filters={filters}
-                    setFilters={setFilters}
+                    onResetFilters={resetFilters}
+                    sort={sort}
+                    onSort={handleHeaderSort}
                     shortlisted={shortlisted}
                     toggleShortlist={toggleShortlist}
                     lastVisit={lastVisit}
-                    onSelectListing={setSelectedListing}
-                    selectedListingUrl={selectedListing?.url}
+                    onSelectListing={setSelected}
+                    selectedListingUrl={current?.url}
                   />
                 )}
 
                 {activeTab === 'cards' && (
                   <ListingCardView
-                    listings={displayedListings}
-                    onSelectListing={setSelectedListing}
+                    listings={sortedListings}
+                    filters={filters}
+                    onResetFilters={resetFilters}
+                    onSelectListing={setSelected}
                     shortlisted={shortlisted}
                     onToggleShortlist={toggleShortlist}
+                    lastVisit={lastVisit}
                   />
                 )}
 
@@ -501,10 +462,12 @@ export default function App() {
                   <ShortlistWorkspace
                     shortlistedUrls={shortlisted}
                     userData={userData}
-                    allListings={listings}
+                    allListings={enriched}
+                    comparables={comparables}
+                    sort={sort}
                     onToggleShortlist={toggleShortlist}
                     onUpdateNote={handleUpdateNote}
-                    onSelectListing={setSelectedListing}
+                    onSelectListing={setSelected}
                   />
                 )}
 
@@ -523,52 +486,48 @@ export default function App() {
                   <MapView
                     listings={filteredListings}
                     theme={theme}
-                    onSelectListing={setSelectedListing}
+                    onSelectListing={setSelected}
+                    onResetFilters={resetFilters}
                     onFilterSuburb={(suburb) => {
                       setFilters(prev => ({ ...prev, suburbs: [suburb] }));
-                      setActiveTab('table');
+                      setActiveTab(window.matchMedia?.(MOBILE_QUERY).matches ? 'cards' : 'table');
                     }}
                   />
                 )}
 
                 {activeTab === 'compare' && (
-                  <SuburbComparison
-                    listings={filteredListings}
-                    history={history}
-                    onDrillDown={handleDrillDown}
-                  />
+                  <SuburbComparison listings={filteredListings} history={history} onDrillDown={handleDrillDown} />
                 )}
 
-                {activeTab === 'ai' && (
-                  <AIPanel
-                    filteredListings={filteredListings}
-                    filters={filters}
-                  />
-                )}
+                {activeTab === 'ai' && <AIPanel filteredListings={filteredListings} filters={filters} />}
               </Suspense>
-            </main>
-          )}
+            )}
+          </main>
         </>
       )}
-      {/* LISTING DETAIL DRAWER */}
-      {selectedListing && (
+
+      {current && (
         <Suspense fallback={null}>
           <ListingDrawer
-            listing={selectedListing}
-            suburbMedianPrices={suburbMedianPrices}
+            listing={current}
+            medianPrice={drawerMedian.median}
+            medianLabel={drawerMedian.label}
             shortlisted={shortlisted}
             toggleShortlist={toggleShortlist}
-            onClose={() => setSelectedListing(null)}
+            onClose={closeDrawer}
+            onPrev={goPrev}
+            onNext={goNext}
+            position={navIndex >= 0 ? { index: navIndex, total: navList.length } : null}
           />
         </Suspense>
       )}
 
-      {/* SAVED SEARCHES MODAL */}
       <SavedSearchesModal
         isOpen={showSavedSearchesModal}
         onClose={() => setShowSavedSearchesModal(false)}
         currentFilters={filters}
-        savedSearches={userData?.savedSearches || []}
+        savedSearches={savedSearches}
+        matchCounts={savedSearchCounts}
         onSaveCurrentSearch={handleSaveCurrentSearch}
         onApplySearch={handleApplySearch}
         onDeleteSearch={handleDeleteSearch}
@@ -576,6 +535,28 @@ export default function App() {
         onUndoDelete={handleUndoDeleteSearch}
         recentlyDeleted={recentlyDeletedSearch}
       />
+
+      <div aria-live="polite" className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[60] w-[calc(100%-2rem)] max-w-md pointer-events-none">
+        {toast && (
+          <div className="toast-in pointer-events-auto border-2 border-ink bg-ink text-paper px-4 py-3 flex items-center justify-between gap-3 shadow-[3px_3px_0_#FFD23F]">
+            <span className="text-sm font-bold">{toast.message}</span>
+            <div className="flex items-center gap-1">
+              {toast.undo && (
+                <button
+                  type="button"
+                  onClick={() => { toast.undo(); setToast(null); }}
+                  className="min-h-[36px] px-3 text-xs font-black uppercase text-yellow underline cursor-pointer"
+                >
+                  Undo
+                </button>
+              )}
+              <button type="button" onClick={() => setToast(null)} className="w-8 h-8 inline-flex items-center justify-center cursor-pointer" aria-label="Dismiss">
+                <Icon name="close" size={12} />
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

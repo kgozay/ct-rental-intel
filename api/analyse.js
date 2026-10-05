@@ -1,4 +1,6 @@
 const { SUBURBS } = require('./suburbs');
+const { VALUE_THRESHOLDS } = require('./confidence');
+const GOOD_VALUE_SCORE = VALUE_THRESHOLDS.GOOD;
 const VALID_SUBURBS = new Set(SUBURBS.map(s => s.name));
 
 const rateLimitMap = new Map();
@@ -123,7 +125,7 @@ module.exports = async function handler(req, res) {
     const suburbStats = {};
     const totalListings = listings.length;
     const priceChangesCount = listings.filter(l => l.previous_price && l.price < l.previous_price).length;
-    const goodValueCount = listings.filter(l => l.value_score > 1.15).length;
+    const goodValueCount = listings.filter(l => l.value_score >= GOOD_VALUE_SCORE).length;
     
     listings.forEach(l => {
       if (!suburbStats[l.suburb]) {
@@ -140,7 +142,7 @@ module.exports = async function handler(req, res) {
       if (typeof l.price === 'number') {
         suburbStats[l.suburb].prices.push(l.price);
       }
-      if (l.value_score > 1.15) {
+      if (l.value_score >= GOOD_VALUE_SCORE) {
         suburbStats[l.suburb].goodValue++;
       }
       if (l.furnished === true) suburbStats[l.suburb].furnished++;
@@ -242,7 +244,7 @@ Respond STRICTLY with a valid JSON object matching this schema:
 Here is the current aggregated listing data:
 - Total active listings: ${totalListings}
 - Price drops: ${priceChangesCount}
-- Good value listings (score > 1.15): ${goodValueCount}
+- Good value listings (score >= ${GOOD_VALUE_SCORE}): ${goodValueCount}
 - User Search Context:
   - Max Price: ${maxPriceText}
   - Suburbs active: ${safeSuburb}

@@ -22,7 +22,7 @@ export function formatDataStatus(dataStatus) {
       state: DATA_STATES.UNAVAILABLE,
       title: 'Data Unavailable',
       description: 'Unable to connect to market intelligence service. Please check your connection.',
-      badgeClass: 'bg-red text-white'
+      badgeClass: 'bg-bred text-white'
     };
   }
 
@@ -85,7 +85,7 @@ export function formatDataStatus(dataStatus) {
         state: DATA_STATES.UNAVAILABLE,
         title: 'Data Unavailable',
         description: 'Could not retrieve listing evidence. Try again in a moment.',
-        badgeClass: 'bg-red text-white'
+        badgeClass: 'bg-bred text-white'
       };
   }
 }

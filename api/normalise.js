@@ -241,7 +241,8 @@ function medianOf(nums) {
 
 /**
  * value_score = how a listing compares to its suburb's market. >1 = cheaper than the
- * benchmark (good value), <1 = pricier. Thresholds: >1.15 good, 0.85–1.15 fair, <0.85 expensive.
+ * benchmark (good value), <1 = pricier. Verdict thresholds live in api/confidence.js and
+ * src/utils/confidence.js (VALUE_THRESHOLDS: >= 1.2 good, <= 0.8 premium).
  *
  * Primary basis is price/m² (size-aware, matches the R/m² legend in the UI):
  *   value_score = suburbMedian(price_per_m2) / listing.price_per_m2

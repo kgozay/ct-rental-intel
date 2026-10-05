@@ -1,27 +1,28 @@
 import { useState, useEffect, useRef } from 'react';
 import { SUBURBS_LIST } from '../utils/suburbs';
+import Icon from './Icon';
+
+// Module-level so reports survive the panel unmounting when switching tabs.
+const reportCache = new Map();
 
 export default function AIPanel({ filteredListings, filters }) {
-  const [analysis, setAnalysis] = useState('');
-  const [structuredData, setStructuredData] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [typewriterIndex, setTypewriterIndex] = useState(0);
-  const [generatedAt, setGeneratedAt] = useState(null);
-  const [showSkip, setShowSkip] = useState(false);
-
-  const [isFallback, setIsFallback] = useState(false);
-
-  // Cache analyses by signature of the inputs so re-clicking Generate doesn't re-query
-  const cacheRef = useRef({});
-  const skipTimerRef = useRef(null);
   const signature = JSON.stringify({
-    suburbs: [...filters.suburbs].sort(),
-    maxPrice: filters.maxPrice,
-    minBeds: filters.minBeds,
-    furnished: filters.furnished,
-    goodValueOnly: filters.goodValueOnly,
-    count: filteredListings.length
+    filters: { ...filters, suburbs: [...filters.suburbs].sort() },
+    count: filteredListings.length,
+    first: filteredListings[0]?.url || null,
   });
+  const restored = reportCache.get(signature) || null;
+
+  const [analysis, setAnalysis] = useState(restored?.analysis || '');
+  const [structuredData, setStructuredData] = useState(restored?.structured || null);
+  const [loading, setLoading] = useState(false);
+  // A restored report is shown in full straight away (no typewriter replay).
+  const [typewriterIndex, setTypewriterIndex] = useState(restored ? Infinity : 0);
+  const [generatedAt, setGeneratedAt] = useState(restored?.generatedAt || null);
+  const [showSkip, setShowSkip] = useState(false);
+  const [isFallback, setIsFallback] = useState(Boolean(restored?.fallback));
+
+  const skipTimerRef = useRef(null);
 
   // Dynamic button label
   const activeSuburbs = filters.suburbs;
@@ -33,8 +34,8 @@ export default function AIPanel({ filteredListings, filters }) {
         ? activeSuburbs.map(s => s.toUpperCase()).join(', ')
         : `${activeSuburbs.length} SUBURBS`;
   const buttonLabel = loading
-    ? '⏳ Analysing...'
-    : `✦ ANALYSE ${filteredListings.length} ${suburbSummary} LISTING${filteredListings.length !== 1 ? 'S' : ''}`;
+    ? 'Analysing…'
+    : `Analyse ${filteredListings.length} ${suburbSummary} LISTING${filteredListings.length !== 1 ? 'S' : ''}`;
 
   const prefersReducedMotion = typeof window !== 'undefined' &&
     window.matchMedia &&
@@ -44,7 +45,7 @@ export default function AIPanel({ filteredListings, filters }) {
   useEffect(() => {
     if (skipTimerRef.current) clearTimeout(skipTimerRef.current);
 
-    if (prefersReducedMotion || !analysis) {
+    if (prefersReducedMotion || !analysis || typewriterIndex >= analysis.length) {
       return;
     }
 
@@ -68,6 +69,7 @@ export default function AIPanel({ filteredListings, filters }) {
       clearInterval(interval);
       if (skipTimerRef.current) clearTimeout(skipTimerRef.current);
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- start once per new analysis
   }, [analysis, prefersReducedMotion]);
 
   const streamedText = prefersReducedMotion ? analysis : analysis.slice(0, typewriterIndex);
@@ -78,10 +80,10 @@ export default function AIPanel({ filteredListings, filters }) {
   };
 
   const handleAnalyse = async () => {
-    const cached = cacheRef.current[signature];
+    const cached = reportCache.get(signature);
     if (cached) {
       setShowSkip(false);
-      setTypewriterIndex(0);
+      setTypewriterIndex(Infinity);
       setAnalysis(cached.analysis);
       setStructuredData(cached.structured || null);
       setGeneratedAt(cached.generatedAt);
@@ -100,7 +102,8 @@ export default function AIPanel({ filteredListings, filters }) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          listings: filteredListings,
+          // eslint-disable-next-line no-unused-vars
+          listings: filteredListings.map(({ valuation, ...rest }) => rest),
           context: {
             suburb: filters.suburbs.join(', '),
             maxPrice: filters.maxPrice,
@@ -115,12 +118,12 @@ export default function AIPanel({ filteredListings, filters }) {
         setStructuredData(data.structured || null);
         setGeneratedAt(data.generatedAt);
         setIsFallback(Boolean(data.fallback));
-        cacheRef.current[signature] = {
+        reportCache.set(signature, {
           analysis: data.analysis,
           structured: data.structured,
           generatedAt: data.generatedAt,
           fallback: data.fallback
-        };
+        });
       } else {
         setAnalysis("Analysis failed — the service is temporarily unavailable. Please try again in a moment.");
       }
@@ -146,8 +149,12 @@ export default function AIPanel({ filteredListings, filters }) {
           disabled={loading || filteredListings.length === 0}
           className="inline-flex items-center gap-2 border-[3px] border-ink bg-blue text-white font-extrabold uppercase px-[1.125rem] py-[0.6875rem] text-[0.8125rem] tracking-[0.5px] cursor-pointer transition-all duration-75 hover:translate-x-[-1px] hover:translate-y-[-1px] hover:shadow-[4px_4px_0_#111111] active:translate-x-[4px] active:translate-y-[4px] active:shadow-none disabled:bg-neutral-300 disabled:text-neutral-500 disabled:cursor-not-allowed select-none shadow-[2px_2px_0_#111111]"
         >
+          {loading ? <Icon name="spinner" /> : <Icon name="sparkle" />}
           {buttonLabel}
         </button>
+        {generatedAt && !loading && (
+          <p className="text-xs font-medium text-ink/80 mt-2 m-0">Change filters and run again for a fresh read — reports are kept until you reload.</p>
+        )}
       </div>
 
       <div
@@ -157,13 +164,13 @@ export default function AIPanel({ filteredListings, filters }) {
         aria-live="polite"
       >
         {loading && (
-          <div className="flex items-center justify-center py-6 text-neutral-400 font-extrabold animate-pulse">
-            ✦ Analysing {filteredListings.length} listings with Gemini 2.5 Flash...
+          <div className="flex items-center justify-center py-6 text-ink/80 font-extrabold animate-pulse">
+            <Icon name="spinner" className="mr-2" /> Analysing {filteredListings.length} listings…
           </div>
         )}
 
         {!loading && !analysis && (
-          <div className="text-neutral-500 font-medium">
+          <div className="text-ink/80 font-medium">
             <div className="font-black text-ink text-sm mb-1.5">AI Market Report</div>
             <p className="text-sm leading-relaxed max-w-lg">
               Generates a comprehensive, 3-paragraph analyst report evaluating value picks across your active {filteredListings.length} listings, identifying supply anomalies, and detailing concrete rental search tactics.
@@ -202,7 +209,7 @@ export default function AIPanel({ filteredListings, filters }) {
                       <span className="font-black text-ink uppercase">{b.suburb}</span>
                       <span className="bg-emerald-100 text-emerald-800 font-bold px-1.5 py-0.5">{b.discount}</span>
                     </div>
-                    <p className="text-neutral-600 leading-snug">{b.detail}</p>
+                    <p className="text-ink/80 leading-snug">{b.detail}</p>
                   </div>
                 ))}
               </div>
@@ -212,7 +219,7 @@ export default function AIPanel({ filteredListings, filters }) {
               <div className="mb-4 border-2 border-ink bg-neutral-50 p-3 text-xs space-y-1 shadow-[2px_2px_0_#111111]">
                 <div className="font-black text-ink uppercase tracking-wider mb-1">Tactical Search Recommendations:</div>
                 {structuredData.actionableAdvice.map((tip, i) => (
-                  <div key={i} className="text-neutral-700 flex items-start gap-1.5">
+                  <div key={i} className="text-ink/90 flex items-start gap-1.5">
                     <span className="text-blue font-bold">▸</span>
                     <span>{tip}</span>
                   </div>
@@ -250,13 +257,13 @@ export default function AIPanel({ filteredListings, filters }) {
             onClick={handleSkip}
             className="border-2 border-ink bg-bgrey text-ink text-[0.6875rem] font-black uppercase px-3 py-1 cursor-pointer hover:bg-neutral-200 transition-colors shadow-[1px_1px_0_#111111]"
           >
-            Skip Animation ⏩
+            <Icon name="skip" size={12} className="mr-1" /> Show full report
           </button>
         </div>
       )}
 
       {generatedAt && !loading && (
-        <div className="mt-3 text-[0.6875rem] font-bold text-neutral-400 select-none">
+        <div className="mt-3 text-[0.6875rem] font-bold text-ink/75">
           Report generated at {new Date(generatedAt).toLocaleString('en-ZA')}
         </div>
       )}

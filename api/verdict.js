@@ -1,4 +1,4 @@
-function generateHeuristicVerdict(listing, suburbMedianPrice) {
+function generateHeuristicVerdict(listing, suburbMedianPrice, medianLabel = 'median') {
   const price = listing.price || 0;
   const suburb = listing.suburb || 'this area';
   const delta = suburbMedianPrice != null ? suburbMedianPrice - price : null;
@@ -8,21 +8,21 @@ function generateHeuristicVerdict(listing, suburbMedianPrice) {
   if (delta != null && absDelta > 0) {
     const pct = Math.round((absDelta / suburbMedianPrice) * 100);
     if (delta > 0) {
-      priceComment = `Priced R${absDelta.toLocaleString('en-ZA')} (${pct}%) below the ${suburb} median (R${suburbMedianPrice.toLocaleString('en-ZA')}/mo), offering exceptional value for renters.`;
+      priceComment = `Priced R${absDelta.toLocaleString('en-ZA')} (${pct}%) below the ${suburb} ${medianLabel} (R${suburbMedianPrice.toLocaleString('en-ZA')}/mo), offering exceptional value for renters.`;
     } else {
-      priceComment = `Priced R${absDelta.toLocaleString('en-ZA')} (${pct}%) above the ${suburb} median (R${suburbMedianPrice.toLocaleString('en-ZA')}/mo), placing it in the premium tier.`;
+      priceComment = `Priced R${absDelta.toLocaleString('en-ZA')} (${pct}%) above the ${suburb} ${medianLabel} (R${suburbMedianPrice.toLocaleString('en-ZA')}/mo), placing it in the premium tier.`;
     }
   } else if (suburbMedianPrice != null) {
-    priceComment = `Priced right at the ${suburb} median of R${suburbMedianPrice.toLocaleString('en-ZA')}/mo.`;
+    priceComment = `Priced right at the ${suburb} ${medianLabel} of R${suburbMedianPrice.toLocaleString('en-ZA')}/mo.`;
   } else {
     priceComment = `Listed at R${price.toLocaleString('en-ZA')}/mo in ${suburb}.`;
   }
 
   let detailComment = '';
   if (listing.price_per_m2 && listing.size_m2) {
-    detailComment = ` Features ${listing.size_m2}m² of floor space at R${listing.price_per_m2}/m² with ${listing.furnished ? 'furnished' : 'unfurnished'} finishes.`;
+    detailComment = ` Features ${listing.size_m2}m² of floor space at R${listing.price_per_m2}/m²${listing.furnished === true ? ', furnished' : listing.furnished === false ? ', unfurnished' : ''}.`;
   } else if (listing.bedrooms != null) {
-    detailComment = ` Offers a ${listing.bedrooms}-bedroom layout with ${listing.furnished ? 'furnished' : 'unfurnished'} interior.`;
+    detailComment = ` Offers a ${listing.bedrooms}-bedroom layout${listing.furnished === true ? ' with a furnished interior' : listing.furnished === false ? ', unfurnished' : ''}.`;
   }
 
   const todayIso = new Date().toISOString().split('T')[0];
@@ -75,10 +75,12 @@ module.exports = async function handler(req, res) {
       agency_name: sanitizeText(rawListing.agency_name, 60)
     };
     const suburbMedianPrice = typeof req.body?.suburbMedianPrice === 'number' ? req.body.suburbMedianPrice : null;
+    // e.g. "2-bed median" — the client sends a like-for-like benchmark when it has one.
+    const medianLabel = sanitizeText(req.body?.medianLabel, 40) || 'median';
     const GEMINI_KEY = process.env.GEMINI_API_KEY;
 
     if (!GEMINI_KEY) {
-      const verdict = generateHeuristicVerdict(listing, suburbMedianPrice);
+      const verdict = generateHeuristicVerdict(listing, suburbMedianPrice, medianLabel);
       return res.status(200).json({ verdict, fallback: true });
     }
 
@@ -101,8 +103,8 @@ module.exports = async function handler(req, res) {
     const listingContext = [
       `Suburb: ${listing.suburb}`,
       `Price: R${(listing.price || 0).toLocaleString('en-ZA')}/mo`,
-      suburbMedianPrice != null ? `Suburb median: R${suburbMedianPrice.toLocaleString('en-ZA')}/mo` : null,
-      priceDiff != null && direction !== 'at' ? `Priced R${priceDiff.toLocaleString('en-ZA')} ${direction} suburb median` : null,
+      suburbMedianPrice != null ? `Suburb ${medianLabel}: R${suburbMedianPrice.toLocaleString('en-ZA')}/mo` : null,
+      priceDiff != null && direction !== 'at' ? `Priced R${priceDiff.toLocaleString('en-ZA')} ${direction} suburb ${medianLabel}` : null,
       listing.bedrooms != null ? `Bedrooms: ${listing.bedrooms}` : null,
       listing.size_m2 ? `Size: ${listing.size_m2}m²` : null,
       listing.price_per_m2 ? `R/m²: ${listing.price_per_m2}` : null,
@@ -153,7 +155,7 @@ Listing data: ${listingContext}`;
       console.warn("Verdict Gemini API call timed out or failed:", apiErr.message);
     }
 
-    const fallbackVerdict = generateHeuristicVerdict(listing, suburbMedianPrice);
+    const fallbackVerdict = generateHeuristicVerdict(listing, suburbMedianPrice, medianLabel);
     return res.status(200).json({ verdict: fallbackVerdict, fallback: true });
 
   } catch (err) {

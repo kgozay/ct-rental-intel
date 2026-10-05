@@ -143,6 +143,8 @@ module.exports = async function handler(req, res) {
       ON CONFLICT (url) DO UPDATE SET
         price = EXCLUDED.price,
         price_changed = (listings.price != EXCLUDED.price),
+        price_changed_at = CASE WHEN listings.price != EXCLUDED.price
+                                THEN NOW() ELSE listings.price_changed_at END,
         previous_price = CASE WHEN listings.price != EXCLUDED.price
                               THEN listings.price ELSE listings.previous_price END,
         scrape_id = EXCLUDED.scrape_id,
@@ -153,7 +155,17 @@ module.exports = async function handler(req, res) {
         size_m2 = EXCLUDED.size_m2,
         price_per_m2 = EXCLUDED.price_per_m2,
         furnished = EXCLUDED.furnished,
-        address = EXCLUDED.address
+        address = EXCLUDED.address,
+        property_type = COALESCE(EXCLUDED.property_type, listings.property_type),
+        available_date = EXCLUDED.available_date,
+        main_image_url = COALESCE(EXCLUDED.main_image_url, listings.main_image_url),
+        agency_name = COALESCE(EXCLUDED.agency_name, listings.agency_name),
+        -- Never downgrade a precise geocode to a suburb centroid.
+        lat = CASE WHEN EXCLUDED.geocode_precise OR NOT COALESCE(listings.geocode_precise, false)
+                   THEN EXCLUDED.lat ELSE listings.lat END,
+        lng = CASE WHEN EXCLUDED.geocode_precise OR NOT COALESCE(listings.geocode_precise, false)
+                   THEN EXCLUDED.lng ELSE listings.lng END,
+        geocode_precise = COALESCE(listings.geocode_precise, false) OR COALESCE(EXCLUDED.geocode_precise, false)
       RETURNING id;
     `;
     const upserted = await sql.query(bulkQuery, params);
@@ -163,7 +175,8 @@ module.exports = async function handler(req, res) {
       `UPDATE scrapes
          SET listing_count = COALESCE(listing_count,0) + $1,
              dropped_count = COALESCE(dropped_count,0) + $2,
-             completed_suburbs = array_append(COALESCE(completed_suburbs, '{}'), $3)
+             completed_suburbs = array_append(array_remove(COALESCE(completed_suburbs, '{}'), $3), $3),
+             failed_suburbs = array_remove(COALESCE(failed_suburbs, '{}'), $3)
        WHERE id = $4
        RETURNING completed_suburbs, failed_suburbs, pending_suburbs`,
       [upserted.length, droppedCount, suburbName, scrapeId]

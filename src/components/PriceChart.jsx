@@ -113,7 +113,7 @@ export default function PriceChart({ listings, history, historyBeds, setHistoryB
         <h3 className="text-sm font-black uppercase text-ink mb-1.5">
           No Data for Price Analytics
         </h3>
-        <p className="text-xs text-neutral-500 font-medium max-w-sm mx-auto mb-0 leading-relaxed">
+        <p className="text-xs text-ink/80 font-medium max-w-sm mx-auto mb-0 leading-relaxed">
           No listings match your active filters. Broaden your search or reset filters to view median charts and scatter distributions.
         </p>
       </div>
@@ -128,14 +128,14 @@ export default function PriceChart({ listings, history, historyBeds, setHistoryB
           <h2 className="inline-block bg-ink text-paper text-xs font-black uppercase tracking-wider px-2.5 py-1">
             Median Price by Suburb &amp; Beds
           </h2>
-          <span className="text-[11px] font-bold text-neutral-500 font-mono">
+          <span className="text-[11px] font-bold text-ink/80 font-mono">
             {listings.length} matching listings
           </span>
         </div>
         {!hasChart1Data ? (
-          <div className="flex flex-col items-center justify-center h-80 bg-neutral-50 dark:bg-neutral-900 border-2 border-dashed border-ink/30 text-neutral-400 font-bold p-4 text-center">
+          <div className="flex flex-col items-center justify-center h-80 bg-neutral-50 dark:bg-neutral-900 border-2 border-dashed border-ink/30 text-ink/75 font-bold p-4 text-center">
             <span className="font-black text-ink text-sm mb-1">No listings available for bar chart</span>
-            <span className="text-xs text-neutral-400 font-medium">Try broadening your suburb or bedroom filters.</span>
+            <span className="text-xs text-ink/75 font-medium">Try broadening your suburb or bedroom filters.</span>
           </div>
         ) : (
           <div className="w-full h-80">
@@ -171,7 +171,7 @@ export default function PriceChart({ listings, history, historyBeds, setHistoryB
             </ResponsiveContainer>
           </div>
         )}
-        <p className="text-[11px] font-medium text-neutral-500 mt-3 pt-2 border-t border-neutral-200">
+        <p className="text-[11px] font-medium text-ink/80 mt-3 pt-2 border-t border-neutral-200">
           Summary: Median monthly rents grouped by 1, 2, and 3 bedrooms across active suburbs. Click any bar to drill down.
         </p>
       </div>
@@ -198,9 +198,9 @@ export default function PriceChart({ listings, history, historyBeds, setHistoryB
           </div>
         </div>
         {chart2Data.length <= 1 ? (
-          <div className="flex flex-col items-center justify-center h-80 bg-neutral-50 dark:bg-neutral-900 border-2 border-dashed border-ink/30 text-neutral-400 font-bold p-4 text-center">
+          <div className="flex flex-col items-center justify-center h-80 bg-neutral-50 dark:bg-neutral-900 border-2 border-dashed border-ink/30 text-ink/75 font-bold p-4 text-center">
             <span className="mb-2 font-black text-ink text-sm">Not enough data for trends yet</span>
-            <span className="text-xs text-neutral-400 font-medium max-w-xs">
+            <span className="text-xs text-ink/75 font-medium max-w-xs">
               {chart2Data.length === 1
                 ? 'One scrape recorded — scrape again in 24h+ to unlock the trend line.'
                 : 'Run the first scrape with ↻ Refresh Listings to start collecting data.'}
@@ -230,7 +230,7 @@ export default function PriceChart({ listings, history, historyBeds, setHistoryB
             </ResponsiveContainer>
           </div>
         )}
-        <p className="text-[11px] font-medium text-neutral-500 mt-3 pt-2 border-t border-neutral-200">
+        <p className="text-[11px] font-medium text-ink/80 mt-3 pt-2 border-t border-neutral-200">
           Summary: Historical suburb median rent trends over 48h crawl cycles. Filter by bedroom count to track specific inventory categories.
         </p>
       </div>
@@ -241,9 +241,9 @@ export default function PriceChart({ listings, history, historyBeds, setHistoryB
           Unit size vs Pricing Spread
         </h2>
         {totalScatterPoints === 0 ? (
-          <div className="flex flex-col items-center justify-center h-80 bg-neutral-50 dark:bg-neutral-900 border-2 border-dashed border-ink/30 text-neutral-400 font-bold p-4 text-center">
+          <div className="flex flex-col items-center justify-center h-80 bg-neutral-50 dark:bg-neutral-900 border-2 border-dashed border-ink/30 text-ink/75 font-bold p-4 text-center">
             <span className="font-black text-ink text-sm mb-1">No size (m²) data available for scatter plot</span>
-            <span className="text-xs text-neutral-400 font-medium">None of the filtered listings reported a floor area in m².</span>
+            <span className="text-xs text-ink/75 font-medium">None of the filtered listings reported a floor area in m².</span>
           </div>
         ) : (
           <div className="w-full h-80">
@@ -270,7 +270,7 @@ export default function PriceChart({ listings, history, historyBeds, setHistoryB
             </ResponsiveContainer>
           </div>
         )}
-        <p className="text-[11px] font-medium text-neutral-500 mt-3 pt-2 border-t border-neutral-200">
+        <p className="text-[11px] font-medium text-ink/80 mt-3 pt-2 border-t border-neutral-200">
           Summary: Floor area (m²) plotted against monthly rent. Properties towards the lower right deliver maximum living area per Rand.
         </p>
       </div>

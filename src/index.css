@@ -297,3 +297,55 @@ html.dark .filter-chip button {
 html.dark .filter-chip button:hover {
   color: #2563EB !important;
 }
+
+/* Horizontal tab strips scroll on narrow screens without a visible bar */
+.no-scrollbar {
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+html.dark .text-ink\/75 {
+  color: rgba(250, 246, 233, 0.75) !important;
+}
+html.dark .text-ink\/90 {
+  color: rgba(250, 246, 233, 0.9) !important;
+}
+
+/* Sticky table header cell must follow the inverted dark-mode header row */
+html.dark thead th.bg-ink {
+  background-color: #FAF6E9 !important;
+}
+html.dark thead button:hover {
+  background-color: #e8e3d3 !important;
+}
+
+/* Toast entrance */
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: none; }
+}
+.toast-in {
+  animation: toast-in 0.2s ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .toast-in { animation: none; }
+}
+
+/* Leaflet divIcon pins: no default white box */
+.ct-pin {
+  background: transparent;
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Text on yellow/lime accents stays dark in dark mode, even with ink opacity utilities */
+html.dark .bg-yellow [class*="text-ink"],
+html.dark .bg-lime [class*="text-ink"],
+html.dark .bg-yellow.text-ink,
+html.dark .bg-lime.text-ink {
+  color: #111111 !important;
+}

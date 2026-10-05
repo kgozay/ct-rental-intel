@@ -62,7 +62,8 @@ async function migrate() {
     `ALTER TABLE scrapes ADD COLUMN IF NOT EXISTS completed_suburbs TEXT[] DEFAULT '{}'`,
     `ALTER TABLE scrapes ADD COLUMN IF NOT EXISTS failed_suburbs TEXT[] DEFAULT '{}'`,
     `ALTER TABLE scrapes ADD COLUMN IF NOT EXISTS completed_at TIMESTAMPTZ`,
-    `ALTER TABLE scrapes ADD COLUMN IF NOT EXISTS error_summary TEXT`
+    `ALTER TABLE scrapes ADD COLUMN IF NOT EXISTS error_summary TEXT`,
+    `ALTER TABLE listings ADD COLUMN IF NOT EXISTS price_changed_at TIMESTAMPTZ`
   ];
 
   for (const statement of statements) {
