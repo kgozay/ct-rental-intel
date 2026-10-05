@@ -4,6 +4,18 @@ const { getConfidenceLevel } = require('./confidence');
 const { expireStaleScrapes } = require('./lifecycle');
 const VALID_SUBURB_NAMES = new Set(SUBURBS.map(s => s.name));
 
+// Self-applying schema additions: run once per warm function instance so a
+// deploy doesn't depend on someone running api/migrate.js by hand.
+let schemaEnsured = null;
+function ensureSchema() {
+  schemaEnsured ??= sql.query(`ALTER TABLE listings ADD COLUMN IF NOT EXISTS price_changed_at TIMESTAMPTZ`)
+    .catch(err => {
+      schemaEnsured = null; // retry on the next request
+      console.warn('Could not ensure listings schema:', err.message);
+    });
+  return schemaEnsured;
+}
+
 module.exports = async function handler(req, res) {
   // Enforce GET
   if (req.method !== 'GET') {
@@ -20,6 +32,8 @@ module.exports = async function handler(req, res) {
     let queryConditions = [];
     let queryParams = [];
     let paramIdx = 1;
+
+    await ensureSchema();
 
     // Finalise runs whose webhooks never arrived so they can't show as "refreshing" forever.
     try {

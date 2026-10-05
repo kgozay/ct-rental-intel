@@ -98,7 +98,7 @@ Initialize the database tables and columns:
 ```bash
 NEON_DATABASE_URL=postgres://... node api/migrate.js
 ```
-It is idempotent and safe to re-run. `api/scrape.js` also applies the newest column additions before each scrape.
+It is idempotent and safe to re-run. You normally don't need it for upgrades: `api/listings.js` and `api/scrape.js` apply the newest column additions themselves.
 
 ### Running Locally
 ```bash
