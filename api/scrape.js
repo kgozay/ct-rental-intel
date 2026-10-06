@@ -1,7 +1,6 @@
-const { sql } = require('./db');
+const { sql, expireStaleScrapes } = require('./db');
 const { SUBURBS } = require('./suburbs');
 const { resolveBaseUrl, launchSuburbRun } = require('./launcher');
-const { expireStaleScrapes } = require('./lifecycle');
 
 // Manual-only cooldown — prevents re-scraping more than once every 2 days.
 const COOLDOWN_HOURS = 48;
@@ -54,7 +53,7 @@ module.exports = async function handler(req, res) {
     // 0a. Finalise runs that never reported back, so a dead run can't hold the
     // "running" state (and a run where nothing landed doesn't block a retry).
     try {
-      await expireStaleScrapes(sql);
+      await expireStaleScrapes();
     } catch (err) {
       console.warn('Could not expire stale scrapes:', err.message);
     }

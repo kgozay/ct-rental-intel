@@ -1,7 +1,6 @@
-const { sql } = require('./db');
+const { sql, expireStaleScrapes } = require('./db');
 const { SUBURBS } = require('./suburbs');
 const { getConfidenceLevel } = require('./confidence');
-const { expireStaleScrapes } = require('./lifecycle');
 const VALID_SUBURB_NAMES = new Set(SUBURBS.map(s => s.name));
 
 // Self-applying schema additions: run once per warm function instance so a
@@ -37,7 +36,7 @@ module.exports = async function handler(req, res) {
 
     // Finalise runs whose webhooks never arrived so they can't show as "refreshing" forever.
     try {
-      await expireStaleScrapes(sql);
+      await expireStaleScrapes();
     } catch (err) {
       console.warn('Could not expire stale scrapes:', err.message);
     }

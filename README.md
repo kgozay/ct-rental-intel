@@ -43,7 +43,8 @@ Unlike commercial real estate portals optimized for listing agents, CT Rental In
   - `api/history.js`: Serves historical median trends by suburb and bedroom count.
   - `api/analyse.js`: Executive market intelligence via Gemini 2.5 Flash with deterministic fallback.
   - `api/migrate.js`: Idempotent database schema migrations for Postgres (run as a Node script).
-  - `api/lifecycle.js`: Finalises scrapes whose Apify webhooks never arrived (2-hour timeout).
+  - `api/db.js`: Shared Postgres client, plus `expireStaleScrapes` (finalises scrapes whose Apify webhooks never arrived after 2 hours).
+  - Note: every `.js` file in `api/` is deployed as its own function, and the Vercel Hobby plan allows at most 12 — put shared helpers in an existing module.
 - **Database**:
   - PostgreSQL (Neon serverless or Supabase) with connection pooling.
 
